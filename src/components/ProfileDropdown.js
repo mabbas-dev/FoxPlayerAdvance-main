@@ -68,20 +68,15 @@ export default function ProfileDropdown({ compact = false }) {
   // Smooth animated exit
   const closeDropdown = useCallback(
     (onFinished) => {
-      isClosingRef.current = true;
-      Animated.timing(openAnim, {
-        toValue: 0,
-        duration: 120,
-        useNativeDriver: true,
-      }).start(() => {
-        setIsOpen(false);
-        setSwitchingPlaylistId(null);
-        setConfirmDeleteId(null);
-        isClosingRef.current = false;
-        if (typeof onFinished === 'function') {
-          onFinished();
-        }
-      });
+      isClosingRef.current = false;
+      openAnim.stopAnimation();
+      openAnim.setValue(0);
+      setIsOpen(false);
+      setSwitchingPlaylistId(null);
+      setConfirmDeleteId(null);
+      if (typeof onFinished === 'function') {
+        onFinished();
+      }
     },
     [openAnim]
   );

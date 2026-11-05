@@ -618,8 +618,15 @@ export default function LiveScreen() {
   }, [livePlayer]);
 
   const playerContainerStyle = useMemo(() => {
+    // Never cover the channel list with an invisible full-screen layer while the slot is unmeasured.
     if (!miniBounds) {
-      return [styles.fullscreenPlayerContainer, { opacity: 0 }];
+      return {
+        position: 'absolute',
+        width: 0,
+        height: 0,
+        opacity: 0,
+        overflow: 'hidden',
+      };
     }
     const z = isPlayerExpanded ? 9999 : 35;
     return {
@@ -1024,7 +1031,7 @@ export default function LiveScreen() {
 
       {!isPlayerDismissed && isSectionActive && playingChannel && resolvedChannel ? (
         <Animated.View
-          pointerEvents="box-none"
+          pointerEvents={miniBounds ? 'box-none' : 'none'}
           style={playerContainerStyle}
         >
           <EmbeddedVideoPlayer

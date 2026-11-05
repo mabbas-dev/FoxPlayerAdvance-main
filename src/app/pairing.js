@@ -30,7 +30,8 @@ export default function PairingRoute() {
     }
   }, [isConfigured, isSyncing, isAddMode, router]);
 
-  if (isSyncing) {
+  // In add mode keep the pairing UI visible (avoid a touch-blocking blank screen during sync).
+  if (isSyncing && !isAddMode) {
     return <View style={{ flex: 1, backgroundColor: '#000000' }} />;
   }
 

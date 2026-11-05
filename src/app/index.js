@@ -20,6 +20,7 @@ export default function IndexScreen() {
   const navigatedRef = useRef(false);
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionStep, setSelectionStep] = useState('');
+  const [profilePickerVisible, setProfilePickerVisible] = useState(true);
 
   useEffect(() => {
     initialize();
@@ -40,6 +41,12 @@ export default function IndexScreen() {
     }
   }, [isInitialized, isConfigured, refreshState, router]);
 
+  useEffect(() => {
+    if (isInitialized && isConfigured && refreshState !== REFRESH_STATE.EXPIRED) {
+      setProfilePickerVisible(true);
+    }
+  }, [isInitialized, isConfigured, refreshState]);
+
   const handleSelectProfile = useCallback(async (profile) => {
     if (!profile?.id) return;
     setIsSelecting(true);
@@ -59,7 +66,12 @@ export default function IndexScreen() {
   }, [selectProfile, router]);
 
   const handleAddNewProfile = useCallback(() => {
-    router.push('/pairing');
+    setProfilePickerVisible(false);
+    requestAnimationFrame(() => {
+      try {
+        router.replace('/pairing?mode=add');
+      } catch (_e) {}
+    });
   }, [router]);
 
   const showProfilePicker = isInitialized && isConfigured && refreshState !== REFRESH_STATE.EXPIRED;
@@ -72,9 +84,9 @@ export default function IndexScreen() {
         deviceId={deviceId}
         showDeviceId={true}
       />
-      {showProfilePicker && !isSelecting && (
+      {showProfilePicker && !isSelecting && profilePickerVisible && (
         <ProfilePickerModal
-          visible={true}
+          visible={profilePickerVisible}
           profiles={profiles}
           activeProfileId={activeProfile?.id}
           onSelectProfile={handleSelectProfile}

@@ -214,14 +214,19 @@ export default function HomeScreen() {
 
   const handleCardPress = useCallback((id) => {
     setActiveCard(id);
-    if (id === 'live') {
-      router.navigate('/live');
-    } else if (id === 'movies') {
-      router.navigate('/movies');
-    } else if (id === 'series') {
-      router.navigate('/series');
-    } else if (id === 'favourites') {
-      router.navigate('/favorites');
+    const path =
+      id === 'live' ? '/live'
+        : id === 'movies' ? '/movies'
+          : id === 'series' ? '/series'
+            : id === 'favourites' ? '/favorites'
+              : null;
+    if (!path) return;
+    try {
+      router.navigate(path);
+    } catch (_e) {
+      try {
+        router.push(path);
+      } catch (_e2) {}
     }
   }, [router]);
 

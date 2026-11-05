@@ -6,6 +6,16 @@ import { getDevicePlaylist } from '../services/apiService';
 
 const PWD_PREFIX = 'fox_pl_pwd_';
 
+/** Persist Xtream password locally so sync never runs with an empty password after add/switch. */
+export async function persistPlaylistPassword(playlistId, password) {
+  const id = playlistId != null ? String(playlistId).trim() : '';
+  const pwd = String(password || '').trim();
+  if (!id || !pwd) return;
+  try {
+    await secureSet(`${PWD_PREFIX}${id}`, pwd);
+  } catch (_e) {}
+}
+
 /**
  * Ensure Xtream/M3U credentials are present before sync (SecureStore + backend config).
  */

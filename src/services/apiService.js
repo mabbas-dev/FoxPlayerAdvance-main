@@ -292,6 +292,11 @@ export async function getDevicePlaylists(deviceId, options = {}) {
             ...decrypted,
           };
         }
+        // Decrypt failed — use redacted playlists from server; caller hydrates passwords per playlist.
+        if (Array.isArray(res.playlists) && res.playlists.length > 0) {
+          console.warn('[getDevicePlaylists] Encrypted payload decrypt failed; using redacted playlist list');
+          return res;
+        }
       }
       return res;
     })

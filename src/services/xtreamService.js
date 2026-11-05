@@ -7,6 +7,11 @@ import {
   AppNetworkError,
   isDeviceOffline,
 } from './networkErrors.js';
+import {
+  isXtreamAuthHttpStatus,
+  isXtreamAuthSuccess,
+  parseXtreamAuthPayload,
+} from '../utils/xtreamAuthHelpers.js';
 
 export { resolvePosterUrl, sanitizePosterString };
 
@@ -37,7 +42,18 @@ export function normalizeServerUrl(serverUrl) {
  */
 function buildXtreamBase(serverUrl, username, password) {
   const base = normalizeServerUrl(serverUrl);
-  return `${base}/player_api.php?username=${encodeURIComponent(username || '')}&password=${encodeURIComponent(password || '')}`;
+  const user = String(username || '').trim();
+  const pass = String(password || '').trim();
+  return `${base}/player_api.php?username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`;
+}
+
+function buildXtreamRequestUrl(serverUrl, username, password, action, extraParams = '') {
+  const base = buildXtreamBase(serverUrl, username, password);
+  const actionName = typeof action === 'string' ? action.trim() : '';
+  if (!actionName) {
+    return `${base}${extraParams || ''}`;
+  }
+  return `${base}&action=${actionName}${extraParams || ''}`;
 }
 
 /**
@@ -113,8 +129,7 @@ async function xtreamRequest(serverUrl, username, password, action, extraParams 
   const linked = linkAbortSignal(externalSignal, timeoutMs);
 
   const normalized = normalizeServerUrl(serverUrl);
-  const base = buildXtreamBase(normalized, username, password);
-  const url = `${base}&action=${action}${extraParams}`;
+  const url = buildXtreamRequestUrl(normalized, username, password, action, extraParams);
 
   try {
     const response = await fetch(url, {
@@ -126,13 +141,20 @@ async function xtreamRequest(serverUrl, username, password, action, extraParams 
       },
     });
 
+    const rawText = await response.text();
+
     if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
+      if (isXtreamAuthHttpStatus(response.status)) {
         throw new AppNetworkError(ERROR_CATEGORY.AUTH_ERROR, 'IPTV_AUTH_FAILED', { statusCode: response.status });
       }
 
-      // If server returned 5xx (e.g. Cloudflare HTTP 520 / 502) and we haven't switched protocol, try alternate
-      if (response.status >= 500 && !retryOptions._triedAltProtocol) {
+      const authParse = parseXtreamAuthPayload(rawText);
+      if (!authParse.ok && (authParse.reason === 'EMPTY_BODY' || authParse.reason === 'AUTH_REJECTED')) {
+        throw new AppNetworkError(ERROR_CATEGORY.AUTH_ERROR, 'IPTV_AUTH_FAILED', { statusCode: response.status });
+      }
+
+      // Trex/XUI use 513 for bad login — do not treat as generic 5xx / HTTPS fallback.
+      if (response.status >= 500 && !isXtreamAuthHttpStatus(response.status) && !retryOptions._triedAltProtocol) {
         const altServerUrl = getAlternateProtocolUrl(normalized);
         if (altServerUrl) {
           try {
@@ -149,10 +171,17 @@ async function xtreamRequest(serverUrl, username, password, action, extraParams 
     }
 
     let data;
-    try {
-      data = await response.json();
-    } catch (_parseErr) {
-      throw new AppNetworkError(ERROR_CATEGORY.INVALID_RESPONSE, 'Xtream server returned an invalid response.');
+    const authParse = parseXtreamAuthPayload(rawText);
+    if (authParse.data) {
+      data = authParse.data;
+    } else if (authParse.reason === 'EMPTY_BODY' && (action === 'get_account_info' || !String(action || '').trim())) {
+      throw new AppNetworkError(ERROR_CATEGORY.AUTH_ERROR, 'IPTV_AUTH_FAILED');
+    } else {
+      try {
+        data = rawText ? JSON.parse(rawText) : null;
+      } catch (_parseErr) {
+        throw new AppNetworkError(ERROR_CATEGORY.INVALID_RESPONSE, 'Xtream server returned an invalid response.');
+      }
     }
 
     if (data && typeof data === 'object' && !Array.isArray(data)) {
@@ -238,10 +267,8 @@ async function xtreamRequest(serverUrl, username, password, action, extraParams 
 /**
  * Authenticate and get account info
  */
-export async function xtreamAuthenticate(serverUrl, username, password, options = {}) {
-  const data = await xtreamRequest(serverUrl, username, password, 'get_account_info', '', null, options.signal);
-
-  if (!data || !data.user_info) {
+function finalizeXtreamAuthResult(data, serverUrl) {
+  if (!data || !isXtreamAuthSuccess(data.user_info)) {
     throw new AppNetworkError(ERROR_CATEGORY.AUTH_ERROR, 'IPTV_AUTH_FAILED');
   }
 
@@ -276,22 +303,20 @@ export async function xtreamAuthenticate(serverUrl, username, password, options 
     throw new AppNetworkError(ERROR_CATEGORY.AUTH_ERROR, 'IPTV_AUTH_FAILED');
   }
 
-  // Derive optimal stream/api server URL if server_info contains a specific port/protocol
-  let resolvedServerUrl = data._workingServerUrl || serverUrl;
+  let resolvedServerUrl = normalizeServerUrl(data._workingServerUrl || serverUrl);
   if (data.server_info && typeof data.server_info === 'object') {
     const sInfo = data.server_info;
     const host = (sInfo.url || '').trim();
     const port = String(sInfo.port || sInfo.https_port || '').trim();
-    const proto = (sInfo.server_protocol || '').toLowerCase().trim();
 
     try {
-      const parsed = new URL(normalizeServerUrl(resolvedServerUrl));
-      // Only refine port if user did not specify one explicitly
+      const parsed = new URL(resolvedServerUrl);
+      const authProtocol = parsed.protocol;
+      // Keep the protocol that successfully authenticated (Trex panels often report https in server_info but only serve http).
       if (!parsed.port && port && port !== '80' && port !== '443') {
         const isLocalHost = !host || host === 'localhost' || host.startsWith('127.') || host.startsWith('192.168.') || host.startsWith('10.');
         const targetHost = isLocalHost ? parsed.hostname : host;
-        const targetProto = proto ? `${proto}:` : parsed.protocol;
-        resolvedServerUrl = `${targetProto}//${targetHost}:${port}`;
+        resolvedServerUrl = `${authProtocol}//${targetHost}:${port}`;
       }
     } catch (_e) {}
   }
@@ -301,8 +326,46 @@ export async function xtreamAuthenticate(serverUrl, username, password, options 
     expirationDate: data.user_info.exp_date,
     maxConnections: data.user_info.max_connections,
     activeConnections: data.user_info.active_cons,
-    serverUrl: resolvedServerUrl,
+    serverUrl: normalizeServerUrl(resolvedServerUrl),
   };
+}
+
+/**
+ * Authenticate and get account info (Trex / XUI / standard Xtream).
+ */
+export async function xtreamAuthenticate(serverUrl, username, password, options = {}) {
+  const normalized = normalizeServerUrl(serverUrl);
+  const user = String(username || '').trim();
+  const pass = String(password || '').trim();
+
+  if (!normalized || !user || !pass) {
+    throw new AppNetworkError(
+      ERROR_CATEGORY.PLAYLIST_SOURCE_ERROR,
+      'Xtream configuration is incomplete. Missing Server URL, Username, or Password.',
+    );
+  }
+
+  let data = null;
+  try {
+    data = await xtreamRequest(normalized, user, pass, 'get_account_info', '', null, options.signal);
+  } catch (firstErr) {
+    if (firstErr?.category === ERROR_CATEGORY.AUTH_ERROR) {
+      throw firstErr;
+    }
+  }
+
+  if (!data || !isXtreamAuthSuccess(data.user_info)) {
+    try {
+      data = await xtreamRequest(normalized, user, pass, '', '', null, options.signal);
+    } catch (secondErr) {
+      if (secondErr?.category === ERROR_CATEGORY.AUTH_ERROR) {
+        throw secondErr;
+      }
+      throw secondErr;
+    }
+  }
+
+  return finalizeXtreamAuthResult(data, normalized);
 }
 
 /**
@@ -324,8 +387,8 @@ export async function xtreamGetLiveCategories(serverUrl, username, password, opt
 export async function xtreamGetLiveStreams(serverUrl, username, password, categoryId = null, options = {}) {
   const extra = categoryId ? `&category_id=${categoryId}` : '';
   const data = await xtreamRequest(serverUrl, username, password, 'get_live_streams', extra, null, options.signal);
-  if (!Array.isArray(data)) return [];
-  return data.map((s) => {
+  const list = safeExtractArray(data, 'streams');
+  return list.map((s) => {
     const streamId = String(s.stream_id || s.id || '');
     const ext = (s.container_extension || 'ts').replace(/^\.+/, '');
     const playUrl = (serverUrl && username && password && streamId)

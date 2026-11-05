@@ -6,7 +6,7 @@
  * - Follows the exact Fox Player dark luxury theme (Deep dark palette with Brand Orange & Cyan accents)
  * - Highlights the active profile with smooth micro-animations
  * - Displays format badge (XTREAM / M3U) and provider host/account subtitle
- * - Allows switching profiles or adding new profiles (up to 4 profiles per device)
+ * - Allows switching profiles or adding new profiles
  */
 
 import React, { useRef, useEffect, useMemo } from 'react';
@@ -89,18 +89,30 @@ export default function ProfilePickerModal({
     }
   }, [visible, fadeAnim, scaleAnim]);
 
-  const apiProfiles = useMemo(() => {
-    return Array.isArray(profiles) ? profiles.slice(0, 4) : [];
-  }, [profiles]);
+  const apiProfiles = useMemo(() => (Array.isArray(profiles) ? profiles : []), [profiles]);
 
   if (!visible) return null;
 
-  const canAddMore = apiProfiles.length < 4 && typeof onAddNewProfile === 'function';
+  const canAddMore = typeof onAddNewProfile === 'function';
   const totalCards = Math.max(1, apiProfiles.length + (canAddMore ? 1 : 0));
+  const cardGap = isLandscape ? 12 : 10;
+  const horizontalPad = 32;
+  const maxCardWidth = isLandscape ? 132 : 118;
+  const columnsPortrait = Math.min(2, totalCards);
 
   const cardWidth = isLandscape
-    ? Math.min(180, Math.floor((screenWidth - 120) / totalCards))
-    : Math.min(150, Math.floor((screenWidth - 60) / Math.min(2, totalCards)));
+    ? Math.min(
+      maxCardWidth,
+      Math.floor((Math.min(screenWidth, 720) - horizontalPad * 2 - cardGap * (totalCards - 1)) / totalCards),
+    )
+    : Math.min(
+      maxCardWidth,
+      Math.floor((screenWidth - horizontalPad * 2 - cardGap * (columnsPortrait - 1)) / columnsPortrait),
+    );
+
+  const avatarSize = isLandscape ? 52 : 48;
+  const profileIconSize = isLandscape ? 26 : 24;
+  const addIconSize = isLandscape ? 22 : 20;
 
   return (
     <FoxModal
@@ -147,11 +159,12 @@ export default function ProfilePickerModal({
             {
               opacity: fadeAnim,
               transform: [{ scale: scaleAnim }],
+              maxWidth: Math.min(screenWidth - 24, isLandscape ? 680 : 320),
             },
           ]}
         >
           <Text style={styles.title}>Select Profile</Text>
-          <Text style={styles.subtitle}>Choose your IPTV profile to continue</Text>
+          <Text style={styles.subtitle}>Pick a playlist to continue</Text>
 
           {/* Profiles Row */}
           <ScrollView
@@ -161,6 +174,7 @@ export default function ProfilePickerModal({
             contentContainerStyle={[
               styles.profilesScrollContent,
               isLandscape ? styles.rowLandscape : styles.rowPortrait,
+              { gap: cardGap },
             ]}
           >
             {apiProfiles.map((profile, index) => {
@@ -188,17 +202,20 @@ export default function ProfilePickerModal({
                     style={[
                       styles.avatarWrapper,
                       {
-                        backgroundColor: `${accentColor}18`,
-                        borderColor: accentColor,
+                        width: avatarSize,
+                        height: avatarSize,
+                        borderRadius: avatarSize / 2,
+                        backgroundColor: `${accentColor}14`,
+                        borderColor: `${accentColor}99`,
                         shadowColor: accentColor,
                       },
                     ]}
                   >
-                    <UserIcon size={36} color={accentColor} />
+                    <UserIcon size={profileIconSize} color={accentColor} />
 
                     {isActive && (
                       <View style={[styles.activeCheckBadge, { backgroundColor: accentColor }]}>
-                        <CheckIcon size={12} color="#000000" />
+                        <CheckIcon size={10} color="#000000" />
                       </View>
                     )}
                   </View>
@@ -236,7 +253,7 @@ export default function ProfilePickerModal({
               );
             })}
 
-            {/* Optional Add Profile Card if fewer than 4 profiles configured */}
+            {/* Optional Add Profile Card */}
             {canAddMore && (
               <TouchableOpacity
                 style={[styles.addProfileCard, { width: cardWidth }]}
@@ -245,16 +262,22 @@ export default function ProfilePickerModal({
                 accessibilityLabel="Add new profile"
                 accessibilityRole="button"
               >
-                <View style={styles.addAvatarWrapper}>
-                  <PlusIcon size={30} color={Colors.brand.primary} />
+                <View
+                  style={[
+                    styles.addAvatarWrapper,
+                    {
+                      width: avatarSize,
+                      height: avatarSize,
+                      borderRadius: avatarSize / 2,
+                    },
+                  ]}
+                >
+                  <PlusIcon size={addIconSize} color={Colors.brand.primary} />
                 </View>
-                <Text style={styles.addProfileTitle}>+ Add Profile</Text>
-                <Text style={styles.addProfileSubtitle}>Available Slot</Text>
-                <View style={styles.badgesRow}>
-                  <View style={[styles.typeBadge, { backgroundColor: Colors.brand.glow }]}>
-                    <Text style={[styles.typeBadgeText, { color: Colors.brand.primary }]}>+ ADD</Text>
-                  </View>
-                </View>
+                <Text style={styles.addProfileTitle}>Add playlist</Text>
+                <Text style={styles.addProfileSubtitle}>
+                  {4 - apiProfiles.length} slot{4 - apiProfiles.length === 1 ? '' : 's'} left
+                </Text>
               </TouchableOpacity>
             )}
           </ScrollView>
@@ -279,7 +302,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 32,
+    paddingHorizontal: 20,
     zIndex: 10,
   },
   brandRow: {
@@ -287,118 +310,118 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logoImage: {
-    width: 140,
-    height: 38,
+    width: 112,
+    height: 30,
   },
   closeBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#161C26',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#121820',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeBtnText: {
-    color: '#F0F2F5',
-    fontSize: 16,
-    fontWeight: '700',
+    color: '#E2E8F0',
+    fontSize: 14,
+    fontWeight: '600',
   },
   contentContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
+    alignSelf: 'center',
   },
   title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#F0F2F5',
-    letterSpacing: 0.5,
-    marginBottom: 6,
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#F1F5F9',
+    letterSpacing: 0.2,
+    marginBottom: 4,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 13,
-    color: '#9BA3B2',
-    marginBottom: 28,
+    fontSize: 12,
+    color: '#94A3B8',
+    marginBottom: 20,
     textAlign: 'center',
+    lineHeight: 17,
   },
   profilesScrollContent: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
+    paddingVertical: 4,
   },
   rowLandscape: {
     flexDirection: 'row',
-    gap: 18,
   },
   rowPortrait: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 14,
+    justifyContent: 'center',
   },
   profileCard: {
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 18,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: '#161C26',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.10)',
+    justifyContent: 'flex-start',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    backgroundColor: '#121820',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    minHeight: 148,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.22,
+    shadowRadius: 5,
+    elevation: 3,
   },
   profileCardActive: {
-    backgroundColor: '#1A212E',
-    shadowOpacity: 0.5,
-    shadowRadius: 14,
-    elevation: 10,
+    backgroundColor: '#151C28',
+    borderWidth: 1.5,
+    shadowOpacity: 0.32,
+    shadowRadius: 8,
+    elevation: 5,
   },
   avatarWrapper: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    borderWidth: 2,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
     position: 'relative',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
   },
   activeCheckBadge: {
     position: 'absolute',
-    bottom: -2,
-    right: -2,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: '#161C26',
+    bottom: -1,
+    right: -1,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: '#121820',
     alignItems: 'center',
     justifyContent: 'center',
   },
   profileName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#F0F2F5',
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#F1F5F9',
     textAlign: 'center',
-    marginBottom: 3,
+    marginBottom: 2,
     width: '100%',
   },
   profileSubtitle: {
-    fontSize: 11,
-    color: '#9BA3B2',
+    fontSize: 10,
+    color: '#94A3B8',
     textAlign: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
     width: '100%',
   },
   badgesRow: {
@@ -407,68 +430,60 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   typeBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  typeBadgeText: {
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  activePill: {
-    backgroundColor: 'rgba(34, 197, 94, 0.2)',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
   },
+  typeBadgeText: {
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+  },
+  activePill: {
+    backgroundColor: 'rgba(34, 197, 94, 0.16)',
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
   activePillText: {
-    color: '#22C55E',
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+    color: '#4ADE80',
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 0.35,
   },
   addProfileCard: {
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 18,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: '#111620',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    justifyContent: 'flex-start',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(18, 24, 32, 0.65)',
+    borderWidth: 1,
+    borderColor: 'rgba(249, 115, 22, 0.28)',
     borderStyle: 'dashed',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 4,
+    minHeight: 148,
   },
   addAvatarWrapper: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: Colors.brand.glow,
-    borderWidth: 1.5,
-    borderColor: Colors.border.glow,
+    backgroundColor: 'rgba(249, 115, 22, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(249, 115, 22, 0.35)',
     borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   addProfileTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#CBD5E1',
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#E2E8F0',
     textAlign: 'center',
-    marginBottom: 3,
+    marginBottom: 2,
     width: '100%',
   },
   addProfileSubtitle: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#64748B',
     textAlign: 'center',
-    marginBottom: 10,
     width: '100%',
   },
 });

@@ -9,9 +9,10 @@ LogBox.ignoreLogs([
 ]);
 import { enableScreens, enableFreeze } from 'react-native-screens';
 
-// Enable native navigation containers and automatic screen freezing for background tabs
+// Native screens stay mounted, but do not freeze them.
+// Freeze leaves the visible screen unable to receive taps after tab changes.
 enableScreens(true);
-enableFreeze(true);
+enableFreeze(false);
 
 import { StatusBar } from 'expo-status-bar';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -166,7 +167,11 @@ function GlobalProfilePickerModal() {
       }}
       onAddNewProfile={() => {
         closeProfilePicker();
-        router.push('/pairing');
+        requestAnimationFrame(() => {
+          try {
+            router.push('/pairing?mode=add');
+          } catch (_e) {}
+        });
       }}
       onClose={closeProfilePicker}
       isDismissable={true}

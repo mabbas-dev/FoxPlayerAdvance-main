@@ -741,6 +741,17 @@ if (preg_match('#^/api/device/([^/]+)/xtream$#', $path, $matches) && $method ===
     $curlErr = curl_error($ch);
     curl_close($ch);
 
+    $authHttpCodes = [401, 403, 511, 512, 513, 514, 515];
+    if (in_array($httpCode, $authHttpCodes, true) || ($body !== false && trim((string)$body) === '' && $httpCode >= 400)) {
+        json_response([
+            'success' => false,
+            'error' => [
+                'code' => 'IPTV_AUTH_FAILED',
+                'message' => 'IPTV authentication failed. Check server URL, username, and password.',
+            ],
+        ], 401);
+    }
+
     if ($body === false || $httpCode < 200 || $httpCode >= 500) {
         json_response([
             'success' => false,
@@ -772,6 +783,21 @@ if (preg_match('#^/api/device/([^/]+)/playlist$#', $path, $matches) && $method =
     $deviceId = normalize_device_id($matches[1]);
     $playlistId = isset($_GET['playlist_id']) ? (int)$_GET['playlist_id'] : null;
 
+    $devCheck = $db->prepare("SELECT id, device_id, id_lock FROM devices WHERE device_id = ? OR mac_address = ? LIMIT 1");
+    $devCheck->execute([$deviceId, $deviceId]);
+    $devRow = $devCheck->fetch();
+
+    if (!$devRow) {
+        json_response([
+            'success' => false,
+            'error' => [
+                'code' => 'DEVICE_NOT_FOUND',
+                'message' => 'Device not found. Please open FOX PLAYER app on your TV or device first to register this ID.',
+            ],
+        ], 404);
+    }
+    $canonicalDeviceId = $devRow['device_id'];
+
     if ($playlistId) {
         $stmt = $db->prepare("
             SELECT dp.playlist_id, dp.playlist_name, dp.is_active, dp.enabled,
@@ -781,7 +807,7 @@ if (preg_match('#^/api/device/([^/]+)/playlist$#', $path, $matches) && $method =
             WHERE dp.device_id = ? AND dp.playlist_id = ?
             LIMIT 1
         ");
-        $stmt->execute([$deviceId, $playlistId]);
+        $stmt->execute([$canonicalDeviceId, $playlistId]);
     } else {
         $stmt = $db->prepare("
             SELECT dp.playlist_id, dp.playlist_name, dp.is_active, dp.enabled,
@@ -791,7 +817,7 @@ if (preg_match('#^/api/device/([^/]+)/playlist$#', $path, $matches) && $method =
             WHERE dp.device_id = ? AND dp.is_active = 1
             LIMIT 1
         ");
-        $stmt->execute([$deviceId]);
+        $stmt->execute([$canonicalDeviceId]);
     }
 
     $r = $stmt->fetch();
@@ -805,7 +831,7 @@ if (preg_match('#^/api/device/([^/]+)/playlist$#', $path, $matches) && $method =
             WHERE dp.device_id = ?
             ORDER BY dp.id ASC LIMIT 1
         ");
-        $fallback->execute([$deviceId]);
+        $fallback->execute([$canonicalDeviceId]);
         $r = $fallback->fetch();
     }
 
@@ -813,7 +839,7 @@ if (preg_match('#^/api/device/([^/]+)/playlist$#', $path, $matches) && $method =
         json_response([
             'success' => true,
             'configured' => false,
-            'device_id' => $deviceId,
+            'device_id' => $canonicalDeviceId,
             'message' => 'No playlists configured for this device.'
         ]);
     }
@@ -859,6 +885,16 @@ if (preg_match('#^/api/device/([^/]+)/playlists$#', $path, $matches) && $method 
     $serverUrl = trim($input['server_url'] ?? ($input['host'] ?? ''));
     $username = trim($input['username'] ?? '');
     $password = trim($input['password'] ?? '');
+
+    if ($serverUrl !== '') {
+        if (!preg_match('#^https?://#i', $serverUrl)) {
+            $serverUrl = 'http://' . $serverUrl;
+        }
+        $serverUrl = preg_replace('#/player_api\.php(\?.*)?$#i', '', $serverUrl);
+        $serverUrl = preg_replace('#/get\.php(\?.*)?$#i', '', $serverUrl);
+        $serverUrl = preg_replace('#/c/?$#i', '', $serverUrl);
+        $serverUrl = rtrim($serverUrl, '/');
+    }
 
     $type = 'm3u';
     if ($typeRaw === 'xtream' || str_contains($typeRaw, 'xtream') || str_contains($typeRaw, 'trex') || str_contains($typeRaw, 'xstream')) {
@@ -920,12 +956,16 @@ if (preg_match('#^/api/device/([^/]+)/playlists$#', $path, $matches) && $method 
     $playlistId = null;
 
     if ($type === 'xtream') {
-        $pFind = $db->prepare("SELECT id FROM playlists WHERE type = 'xtream' AND server_url = ? AND username = ? LIMIT 1");
-        $pFind->execute([$serverUrl, $username]);
-        $rowP = $pFind->fetch();
-        if ($rowP) {
-            $playlistId = (int)$rowP['id'];
-            $db->prepare("UPDATE playlists SET password_encrypted = ?, updated_at = NOW() WHERE id = ?")->execute([$pwEncrypted, $playlistId]);
+        $pFind = $db->prepare("SELECT id, server_url FROM playlists WHERE type = 'xtream' AND username = ?");
+        $pFind->execute([$username]);
+        $compareUrl = normalize_server_url_compare($serverUrl);
+        while ($rowP = $pFind->fetch()) {
+            if (normalize_server_url_compare((string)($rowP['server_url'] ?? '')) === $compareUrl) {
+                $playlistId = (int)$rowP['id'];
+                $db->prepare("UPDATE playlists SET server_url = ?, password_encrypted = ?, updated_at = NOW() WHERE id = ?")
+                   ->execute([$serverUrl, $pwEncrypted, $playlistId]);
+                break;
+            }
         }
     } else {
         $pFind = $db->prepare("SELECT id FROM playlists WHERE type = 'm3u' AND playlist_url = ? LIMIT 1");

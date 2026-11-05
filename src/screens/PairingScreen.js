@@ -26,6 +26,9 @@ import { useRouter } from 'expo-router';
 import { getDevicePairingToken, addDevicePlaylist } from '../services/apiService';
 import { validateAndNormalizeM3UUrl, parseXtreamCredentialsFromUrl } from '../utils/m3uUrlHelpers';
 import { safeBack } from '../utils/navigation';
+import { normalizeServerUrl, xtreamAuthenticate } from '../services/xtreamService';
+import { persistPlaylistPassword } from '../storage/playlistStorage';
+import { getUserFriendlyErrorMessage } from '../services/networkErrors';
 
 export default function PairingScreen({ isAddMode = false }) {
   const { deviceId, isSyncing, syncStep, syncError, reloadPlaylist, pairingToken, pairingCode } = useApp();
@@ -145,28 +148,34 @@ export default function PairingScreen({ isAddMode = false }) {
           payload.password = xtreamCreds.password;
         }
 
+        if (xtreamCreds?.serverUrl && xtreamCreds.username && xtreamCreds.password) {
+          const m3uSrv = normalizeServerUrl(xtreamCreds.serverUrl);
+          await xtreamAuthenticate(m3uSrv, xtreamCreds.username, xtreamCreds.password);
+          payload.server_url = m3uSrv;
+          payload.serverUrl = m3uSrv;
+        }
+
         const res = await addDevicePlaylist(deviceId, payload);
         const newId = res?.playlist_id || res?.id || res?.playlist?.id || res?.playlist?.playlist_id;
+        if (newId && xtreamCreds?.password) {
+          await persistPlaylistPassword(newId, xtreamCreds.password);
+        }
 
         setIsModalVisible(false);
         resetForm();
-        // Immediately trigger sync and switch to the new playlist
         await reloadPlaylist(newId || null, { isManual: true });
       } catch (err) {
-        setFormError(err.message || 'Failed to add M3U playlist.');
+        setFormError(getUserFriendlyErrorMessage(err) || err.message || 'Failed to add M3U playlist.');
         setIsSubmitting(false);
       }
     } else {
-      let srv = serverUrl.trim();
+      let srv = normalizeServerUrl(serverUrl.trim());
       const usr = username.trim();
       const pwd = password.trim();
 
       if (!srv) {
         setFormError('Please enter your Xtream server URL.');
         return;
-      }
-      if (!/^https?:\/\//i.test(srv)) {
-        srv = `http://${srv}`;
       }
       if (!usr) {
         setFormError('Please enter your username.');
@@ -179,6 +188,8 @@ export default function PairingScreen({ isAddMode = false }) {
 
       setIsSubmitting(true);
       try {
+        await xtreamAuthenticate(srv, usr, pwd);
+
         const xtreamPayload = {
           type: 'xtream',
           playlist_name: name || `${usr} (Xtream)`,
@@ -192,13 +203,15 @@ export default function PairingScreen({ isAddMode = false }) {
 
         const res = await addDevicePlaylist(deviceId, xtreamPayload);
         const newId = res?.playlist_id || res?.id || res?.playlist?.id || res?.playlist?.playlist_id;
+        if (newId) {
+          await persistPlaylistPassword(newId, pwd);
+        }
 
         setIsModalVisible(false);
         resetForm();
-        // Immediately trigger sync and switch to the new playlist
         await reloadPlaylist(newId || null, { isManual: true });
       } catch (err) {
-        setFormError(err.message || 'Failed to add Xtream playlist.');
+        setFormError(getUserFriendlyErrorMessage(err) || err.message || 'Failed to add Xtream playlist.');
         setIsSubmitting(false);
       }
     }

@@ -1047,7 +1047,7 @@ export function AppProvider({ children }) {
 
         // 5. Reconcile playlists with local storage
         if (remotePlaylists.length > 0) {
-          savedPlaylists = await syncSavedPlaylistsWithRemote(remotePlaylists);
+          savedPlaylists = await syncSavedPlaylistsWithRemote(remotePlaylists, state.deviceId);
         } else {
           savedPlaylists = await getSavedPlaylists();
         }

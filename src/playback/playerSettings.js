@@ -51,27 +51,35 @@ export const SUBTITLE_SIZE = {
   EXTRA_LARGE: 'extra_large',
 };
 
+/** App-wide fixed caption size (no user resize). */
+export const FIXED_SUBTITLE_SIZE_ID = SUBTITLE_SIZE.SMALL;
+
+/** VLC freetype-fontsize (pt) — only FIXED preset is used by the app. */
 export const SUBTITLE_FONT_SIZES = {
-  small: 12,
-  normal: 18,
-  large: 28,
-  extra_large: 40,
+  small: 6,
+  normal: 12,
+  large: 18,
+  extra_large: 26,
 };
 
-export const SUBTITLE_SIZE_LABELS = {
-  small: 'Small',
-  normal: 'Normal',
-  large: 'Large',
-  extra_large: 'Extra Large',
+/** Android / desktop-style libVLC relative size (negative = smaller). */
+export const SUBTITLE_VLC_REL_FONT_SIZES = {
+  small: -5,
+  normal: 0,
+  large: 2,
+  extra_large: 4,
 };
 
-/** Strict preset id; unknown values fall back to normal. */
-export function normalizeSubtitleSizeId(sizeId) {
-  if (sizeId && Object.prototype.hasOwnProperty.call(SUBTITLE_FONT_SIZES, sizeId)) {
-    return sizeId;
-  }
-  return SUBTITLE_SIZE.NORMAL;
-}
+/**
+ * iOS VLCKit inverts freetype-rel-fontsize — larger values = smaller on-screen text.
+ * @see https://github.com/jellyfin/Swiftfin/pull/1658
+ */
+export const SUBTITLE_VLC_REL_FONT_SIZES_IOS = {
+  small: 24,
+  normal: 20,
+  large: 16,
+  extra_large: 12,
+};
 
 // Default Settings
 export const DEFAULT_PLAYER_SETTINGS = {
@@ -81,7 +89,6 @@ export const DEFAULT_PLAYER_SETTINGS = {
   maxRetryAttempts: 3,
   bufferProfile: BUFFER_PROFILE.NORMAL,
   rememberPlayerPreference: true,
-  subtitleSize: SUBTITLE_SIZE.NORMAL,
   subtitlesEnabled: false,
 };
 
@@ -272,10 +279,10 @@ export async function loadPlayerSettings() {
   try {
     const raw = (await readCacheStale(STORAGE_PLAYER_SETTINGS_KEY)) || (await readCache(STORAGE_PLAYER_SETTINGS_KEY));
     if (raw && typeof raw === 'object') {
+      const { subtitleSize: _dropLegacySubtitleSize, ...rest } = raw;
       cachedSettings = {
         ...DEFAULT_PLAYER_SETTINGS,
-        ...raw,
-        subtitleSize: normalizeSubtitleSizeId(raw.subtitleSize),
+        ...rest,
       };
     } else {
       // Migrate from legacy single-key storage if present
@@ -332,18 +339,12 @@ export async function savePlayerSettings(partial = {}) {
     maxRetries = Math.max(1, Math.min(5, Math.round(partial.maxRetryAttempts)));
   }
 
-  const normalizedPartial = { ...partial };
-  if (normalizedPartial.subtitleSize !== undefined) {
-    normalizedPartial.subtitleSize = normalizeSubtitleSizeId(normalizedPartial.subtitleSize);
-  }
+  const { subtitleSize: _dropSubtitleSize, ...normalizedPartial } = partial;
 
   const nextSettings = {
     ...cachedSettings,
     ...normalizedPartial,
     maxRetryAttempts: maxRetries,
-    subtitleSize: normalizeSubtitleSizeId(
-      normalizedPartial.subtitleSize ?? cachedSettings.subtitleSize,
-    ),
   };
 
   cachedSettings = nextSettings;

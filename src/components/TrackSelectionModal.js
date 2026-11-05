@@ -16,12 +16,6 @@ import {
   CheckIcon,
   CloseXIcon,
 } from './Icons';
-import {
-  SUBTITLE_SIZE,
-  SUBTITLE_FONT_SIZES,
-  normalizeSubtitleSizeId,
-} from '../playback/playerSettings.js';
-
 // Comprehensive language map for converting ISO codes to friendly display names
 const LANGUAGE_NAMES = {
   en: 'English',
@@ -83,18 +77,6 @@ const LANGUAGE_NAMES = {
   ukr: 'Ukrainian',
   und: 'Original Audio',
 };
-
-// Caption font size presets (S / N / L / XL → playerSettings px map)
-export const SUBTITLE_SIZES = [
-  { id: SUBTITLE_SIZE.SMALL, label: 'Small', sizePx: SUBTITLE_FONT_SIZES.small },
-  { id: SUBTITLE_SIZE.NORMAL, label: 'Normal', sizePx: SUBTITLE_FONT_SIZES.normal },
-  { id: SUBTITLE_SIZE.LARGE, label: 'Large', sizePx: SUBTITLE_FONT_SIZES.large },
-  {
-    id: SUBTITLE_SIZE.EXTRA_LARGE,
-    label: 'Extra Large',
-    sizePx: SUBTITLE_FONT_SIZES.extra_large,
-  },
-];
 
 /**
  * Parses and extracts a clean display title, language code, and description subtext for a track.
@@ -186,13 +168,8 @@ export default function TrackSelectionModal({
   availableSubtitleTracks = [],
   selectedSubtitleTrack = null,
   onSelectSubtitleTrack,
-  subtitleSize = 'normal',
-  onSelectSubtitleSize,
 }) {
   const [selectedTab, setSelectedTab] = useState(initialTab || 'audio');
-  const [currentSubtitleSize, setCurrentSubtitleSize] = useState(
-    () => normalizeSubtitleSizeId(subtitleSize),
-  );
 
   // Pop animation values
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
@@ -204,7 +181,6 @@ export default function TrackSelectionModal({
     if (visible) {
       setIsRendered(true);
       setSelectedTab(initialTab || 'audio');
-      setCurrentSubtitleSize(normalizeSubtitleSizeId(subtitleSize));
 
       scaleAnim.setValue(0.85);
       opacityAnim.setValue(0);
@@ -241,7 +217,7 @@ export default function TrackSelectionModal({
         setIsRendered(false);
       });
     }
-  }, [visible, initialTab, subtitleSize, opacityAnim, scaleAnim]);
+  }, [visible, initialTab, opacityAnim, scaleAnim]);
 
   const handleClose = () => {
     Animated.parallel([
@@ -292,9 +268,9 @@ export default function TrackSelectionModal({
     const rows =
       selectedTab === 'audio'
         ? audioList.length
-        : 1 + subtitleList.length + (onSelectSubtitleSize ? 1 : 0);
+        : 1 + subtitleList.length;
     return Math.min(240, Math.max(88, rows * 34 + 12));
-  }, [selectedTab, audioList.length, subtitleList.length, onSelectSubtitleSize]);
+  }, [selectedTab, audioList.length, subtitleList.length]);
 
   // Robust determination of currently selected audio track
   const isAudioTrackSelected = (track, idx) => {
@@ -511,28 +487,6 @@ export default function TrackSelectionModal({
               })
             ) : (
               <>
-                {onSelectSubtitleSize ? (
-                  <View style={styles.sizePillRow}>
-                    {SUBTITLE_SIZES.map((sz) => {
-                      const isSelected = currentSubtitleSize === sz.id;
-                      return (
-                        <TouchableOpacity
-                          key={sz.id}
-                          style={[styles.sizePill, isSelected && styles.sizePillActive]}
-                          onPress={() => {
-                            setCurrentSubtitleSize(sz.id);
-                            onSelectSubtitleSize(sz.id);
-                          }}
-                          activeOpacity={0.75}
-                        >
-                          <Text style={[styles.sizePillText, isSelected && styles.sizePillTextActive]}>
-                            {sz.id === 'extra_large' ? 'XL' : sz.label.slice(0, 1)}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                ) : null}
                 {renderSimpleRow(
                   'sub_off',
                   'Off',

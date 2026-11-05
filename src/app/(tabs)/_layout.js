@@ -20,8 +20,8 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarStyle: { display: 'none' },
         sceneContainerStyle: { backgroundColor: Colors.background.primary },
-        detachInactiveScreens: true,
-        freezeOnBlur: true,
+        detachInactiveScreens: false,
+        freezeOnBlur: false,
       }}
     >
       <Tabs.Screen

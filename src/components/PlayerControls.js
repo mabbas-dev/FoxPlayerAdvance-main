@@ -91,8 +91,6 @@ function PlayerControlsComponent({
   availableSubtitleTracks = [],
   selectedSubtitleTrack = null,
   onSelectSubtitleTrack = null,
-  subtitleSize = 'normal',
-  onSelectSubtitleSize = null,
   onBeforeOpenTrackModal = null,
   // Dual Engine Controls
   activeEngineType = 'NATIVE',
@@ -619,8 +617,6 @@ function PlayerControlsComponent({
           setShowTrackModal(false);
           setTrackModalSnapshot(null);
         }}
-        subtitleSize={subtitleSize}
-        onSelectSubtitleSize={onSelectSubtitleSize}
       />
     </Animated.View>
   );

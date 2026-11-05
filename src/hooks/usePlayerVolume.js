@@ -34,7 +34,15 @@ let lastConfirmedDeviceVolume = null;
  * @param {Function} [options.onVolumeChange] - Callback receiving (volume, { source: 'gesture' | 'hardware' })
  * @returns {Object} { volume, isMuted, setVolume, adjustVolume, toggleMute, notifyGestureStart, notifyGestureEnd, refreshVolume, isNativeSupported }
  */
-export function usePlayerVolume({ player = null, initialVolume = DEFAULT_VOLUME, onVolumeChange = null } = {}) {
+export function usePlayerVolume({
+  player = null,
+  initialVolume = DEFAULT_VOLUME,
+  onVolumeChange = null,
+  getShouldSyncToPlayer = null,
+} = {}) {
+  const shouldSyncToPlayer = () => (
+    typeof getShouldSyncToPlayer === 'function' ? getShouldSyncToPlayer() : true
+  );
   const getInitialVolume = () => {
     if (lastConfirmedDeviceVolume !== null) {
       return lastConfirmedDeviceVolume;
@@ -94,7 +102,7 @@ export function usePlayerVolume({ player = null, initialVolume = DEFAULT_VOLUME,
               }
 
               const activePlayer = playerRef.current;
-              if (activePlayer) {
+              if (activePlayer && shouldSyncToPlayer()) {
                 try {
                   activePlayer.volume = sysVol;
                   activePlayer.muted = (sysVol === 0);
@@ -168,7 +176,7 @@ export function usePlayerVolume({ player = null, initialVolume = DEFAULT_VOLUME,
         }
 
         const activePlayer = playerRef.current;
-        if (activePlayer) {
+        if (activePlayer && shouldSyncToPlayer()) {
           try {
             activePlayer.volume = clamped;
             if (clamped > 0 && activePlayer.muted) {
@@ -198,7 +206,7 @@ export function usePlayerVolume({ player = null, initialVolume = DEFAULT_VOLUME,
 
   // Synchronize player audio stream when active player instance attaches
   useEffect(() => {
-    if (!player) return;
+    if (!player || !shouldSyncToPlayer()) return;
 
     try {
       const activeVol = volumeRef.current;
@@ -265,7 +273,7 @@ export function usePlayerVolume({ player = null, initialVolume = DEFAULT_VOLUME,
     }
 
     const activePlayer = playerRef.current;
-    if (activePlayer) {
+    if (activePlayer && shouldSyncToPlayer()) {
       try {
         activePlayer.volume = clamped;
 
@@ -327,7 +335,7 @@ export function usePlayerVolume({ player = null, initialVolume = DEFAULT_VOLUME,
       const restoreVol = (previousUnmutedVolumeRef.current > 0) ? previousUnmutedVolumeRef.current : 0.5;
       setIsMuted(false);
       setVolume(restoreVol, { source: 'toggleMute' });
-      if (activePlayer) {
+      if (activePlayer && shouldSyncToPlayer()) {
         try {
           activePlayer.muted = false;
           activePlayer.volume = restoreVol;
@@ -338,7 +346,7 @@ export function usePlayerVolume({ player = null, initialVolume = DEFAULT_VOLUME,
       previousUnmutedVolumeRef.current = currentVol;
       setIsMuted(true);
       setVolume(0, { source: 'toggleMute' });
-      if (activePlayer) {
+      if (activePlayer && shouldSyncToPlayer()) {
         try {
           activePlayer.muted = true;
           activePlayer.volume = 0;

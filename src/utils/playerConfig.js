@@ -526,22 +526,41 @@ export function logPlayerDiagnostic(event, meta = {}) {
  * @param {boolean} [options.isLive=false]
  * @returns {Array<string>} List of VLC command-line media options
  */
-export function getPlatformVlcOptions({ isLive = false, subtitleSize = 'normal' } = {}) {
-  let fontSizePx = 18;
-  let relFontSize = 0;
+export function getPlatformVlcOptions({ isLive = false } = {}) {
+  let fontSizePx = 12;
+  let relFontSize = Platform.OS === 'ios' ? 24 : -5;
   try {
-    const { SUBTITLE_FONT_SIZES } = require('../playback/playerSettings.js');
-    fontSizePx = SUBTITLE_FONT_SIZES[subtitleSize] || SUBTITLE_FONT_SIZES.normal || 18;
+    const {
+      SUBTITLE_FONT_SIZES,
+      SUBTITLE_VLC_REL_FONT_SIZES,
+      SUBTITLE_VLC_REL_FONT_SIZES_IOS,
+      FIXED_SUBTITLE_SIZE_ID,
+    } = require('../playback/playerSettings.js');
+    const key = FIXED_SUBTITLE_SIZE_ID || 'small';
+    fontSizePx = SUBTITLE_FONT_SIZES[key] ?? 12;
+    if (Platform.OS === 'ios') {
+      relFontSize = SUBTITLE_VLC_REL_FONT_SIZES_IOS[key] ?? 24;
+    } else {
+      relFontSize = SUBTITLE_VLC_REL_FONT_SIZES[key] ?? -5;
+      fontSizePx = SUBTITLE_FONT_SIZES[key] ?? 7;
+    }
   } catch (_e) {
-    fontSizePx = 18;
+    relFontSize = Platform.OS === 'ios' ? 24 : -5;
+    fontSizePx = Platform.OS === 'ios' ? 10 : 7;
   }
-  const relMap = { small: -3, normal: 0, large: 2, extra_large: 4 };
-  relFontSize = relMap[subtitleSize] ?? 0;
+
+  const subtitleOpts =
+    Platform.OS === 'ios'
+      ? [':freetype-rel-fontsize=' + relFontSize]
+      : [
+          ':freetype-fontsize=' + fontSizePx,
+          ':freetype-rel-fontsize=' + relFontSize,
+        ];
+
   const base = [
     ':network-caching=1500',
     ':http-reconnect',
-    `:freetype-fontsize=${fontSizePx}`,
-    `:freetype-rel-fontsize=${relFontSize}`,
+    ...subtitleOpts,
     ':freetype-color=16777215',
   ];
   if (isLive) {

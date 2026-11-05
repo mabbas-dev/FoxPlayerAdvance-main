@@ -49,6 +49,12 @@ import {
   logPlayerDiagnostic,
 } from '../utils/playerConfig.js';
 import {
+  applyActiveEngineAudio,
+  resumeActiveEnginePlayback,
+  cancelPostResumeAudioSync,
+  silenceNativeCompanionPlayer,
+} from '../utils/activeEngineAudio.js';
+import {
   collectPlaybackMediaTracks,
   normalizeAudioTrackList,
   normalizeSubtitleTrackList,
@@ -72,9 +78,8 @@ import { setSeriesReturnHighlight } from '../utils/seriesReturnHighlight.js';
 import { addRecentlyWatched, updateRecentlyWatchedProgress } from '../storage/userStorage';
 import { measureAndLogLayout } from '../utils/layoutDiagnostics';
 import {
-  applySubtitleFontSizeForPlayback,
-  applyNativeSubtitleFontSize,
-  reapplyNativeSubtitleSizeWithRetries,
+  applyFixedSubtitles,
+  reapplyFixedNativeSubtitleStyleWithRetries,
 } from '../utils/subtitleAppearance.js';
 import SeriesNextEpisodeOverlay from '../components/SeriesNextEpisodeOverlay.js';
 import {
@@ -203,27 +208,7 @@ export default function PlayerScreen() {
   const [selectedAudioTrack, setSelectedAudioTrack]     = useState(null);
   const [availableSubtitleTracks, setAvailableSubtitleTracks] = useState([]);
   const [selectedSubtitleTrack, setSelectedSubtitleTrack]     = useState(null);
-  const [subtitleSize, setSubtitleSize]                 = useState(() => {
-    const { normalizeSubtitleSizeId } = require('../playback/playerSettings.js');
-    return normalizeSubtitleSizeId(getPlayerSettings()?.subtitleSize);
-  });
-  const subtitleSizeRef                                 = useRef(subtitleSize);
   const userSelectedSubtitleRef                         = useRef(false);
-
-  useEffect(() => {
-    const unsub = subscribePlayerSettings?.((newSettings) => {
-      if (newSettings?.subtitleSize) {
-        setSubtitleSize(newSettings.subtitleSize);
-        subtitleSizeRef.current = newSettings.subtitleSize;
-        applySubtitleFontSizeForPlayback({
-          newSize: newSettings.subtitleSize,
-          activeEngineType: activeEngineTypeRef.current,
-          vlcPlayer,
-        });
-      }
-    });
-    return () => unsub?.();
-  }, [vlcPlayer]);
 
   // Stable mutable refs — only read inside event-handlers / effects, never during render
   const playbackIntentRef   = useRef('PLAYING'); // Tracks genuine user playback intent ('PLAYING' | 'PAUSED')
@@ -260,6 +245,7 @@ export default function PlayerScreen() {
   const lastPlaybackTimeRef = useRef(-1);
   const lastAdvanceTimeRef  = useRef(0);
   const isTogglingPlayRef   = useRef(false);
+  const manualResumeUntilRef = useRef(0);
   const isRetryingRef       = useRef(false);
   const hasEndedRef         = useRef(false);
   const seriesEndHandledRef = useRef(false);
@@ -385,24 +371,6 @@ export default function PlayerScreen() {
     error: normalized.validationError,
   }), [normalized]);
 
-  const handleSelectSubtitleSize = useCallback((newSize) => {
-    const { normalizeSubtitleSizeId } = require('../playback/playerSettings.js');
-    const size = normalizeSubtitleSizeId(newSize);
-    if (!size) return;
-    setSubtitleSize(size);
-    subtitleSizeRef.current = size;
-    savePlayerSettings({ subtitleSize: size }).catch(() => {});
-    applySubtitleFontSizeForPlayback({
-      newSize: size,
-      activeEngineType: activeEngineTypeRef.current,
-      vlcPlayer,
-    });
-  }, [vlcPlayer]);
-
-  useEffect(() => {
-    applyNativeSubtitleFontSize(subtitleSizeRef.current || subtitleSize);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- apply saved size once on mount
-  }, []);
   const contentType = normalized.contentType;
   const playerSource = useMemo(() => {
     if (normalized?.playerSource) return normalized.playerSource;
@@ -477,6 +445,16 @@ export default function PlayerScreen() {
     }
     return null;
   }, [vlcPlayer]);
+
+  const vlcPlayerRef = useRef(vlcPlayer);
+  useEffect(() => {
+    vlcPlayerRef.current = vlcPlayer;
+  }, [vlcPlayer]);
+
+  useEffect(() => {
+    applyFixedSubtitles({ activeEngineType: activeEngineTypeRef.current });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fixed captions once on mount
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -970,7 +948,7 @@ export default function PlayerScreen() {
             activeVlc.source = {
               uri: streamUri,
               userAgent: DEFAULT_IPTV_USER_AGENT,
-              vlcOptions: getPlatformVlcOptions({ isLive, subtitleSize: subtitleSizeRef.current || subtitleSize }),
+              vlcOptions: getPlatformVlcOptions({ isLive }),
               title: title || 'Live Stream',
             };
             try { activeVlc.play(); } catch (_e) {}
@@ -1047,16 +1025,13 @@ export default function PlayerScreen() {
         vlcPlayer.source = {
           uri: streamUri,
           userAgent: DEFAULT_IPTV_USER_AGENT,
-          vlcOptions: getPlatformVlcOptions({ isLive, subtitleSize: subtitleSizeRef.current || subtitleSize }),
+          vlcOptions: getPlatformVlcOptions({ isLive }),
           title: title || 'Live Stream',
         };
         try { vlcPlayer.play(); } catch (_e) {}
         // Pause and mute native player while VLC is active to prevent hardware codec collisions
         try {
-          if (player) {
-            player.pause();
-            player.muted = true;
-          }
+          silenceNativeCompanionPlayer(player);
         } catch (_e) {}
       } catch (_vlcErr) {
         logPlayerDiagnostic('vlcSourceSyncError', { error: _vlcErr?.message });
@@ -1074,6 +1049,14 @@ export default function PlayerScreen() {
           if (activeEngineType !== ENGINE_TYPE.VLC) return;
           logPlayerDiagnostic('vlcStatusChange', { status });
           if (status === 'playing') {
+            applyActiveEngineAudio({
+              activeEngineType: ENGINE_TYPE.VLC,
+              vlcPlayer,
+              nativePlayer: player,
+              volume: volumeRef.current,
+              isMuted: isMutedRef.current,
+              muteInactiveNative: false,
+            });
             if (isSwitchingEngineRef.current) {
               isSwitchingEngineRef.current = false;
               setIsSwitchingEngine(false);
@@ -1182,6 +1165,7 @@ export default function PlayerScreen() {
             } catch (_e) {}
             setSelectedSubtitleTrack(null);
           }
+          applyFixedSubtitles({ activeEngineType: ENGINE_TYPE.VLC });
           confirmPlaybackActive(requestCounterRef.current);
         });
         if (sub?.remove) subs.push(() => sub.remove());
@@ -1305,6 +1289,13 @@ export default function PlayerScreen() {
   const hardwareHudTimerRef = useRef(null);
 
   const handleVolumeChange = useCallback((newVol, info) => {
+    applyActiveEngineAudio({
+      activeEngineType: activeEngineTypeRef.current,
+      vlcPlayer: vlcPlayerRef.current,
+      nativePlayer: player,
+      volume: newVol,
+      isMuted: newVol === 0 || isMutedRef.current,
+    });
     if (info?.source === 'hardware') {
       setGestureHud({
         type: 'volume',
@@ -1318,7 +1309,7 @@ export default function PlayerScreen() {
         setGestureHud(null);
       }, 1200);
     }
-  }, []);
+  }, [player]);
 
   // Media volume management synchronized with player
   const {
@@ -1331,10 +1322,23 @@ export default function PlayerScreen() {
   } = usePlayerVolume({
     player,
     onVolumeChange: handleVolumeChange,
+    getShouldSyncToPlayer: () => activeEngineTypeRef.current === ENGINE_TYPE.NATIVE,
   });
 
   volumeRef.current = volume;
   isMutedRef.current = isMuted;
+
+  useEffect(() => {
+    if (activeEngineType !== ENGINE_TYPE.VLC || !vlcPlayer) return;
+    applyActiveEngineAudio({
+      activeEngineType: ENGINE_TYPE.VLC,
+      vlcPlayer,
+      nativePlayer: player,
+      volume,
+      isMuted,
+      muteInactiveNative: false,
+    });
+  }, [activeEngineType, vlcPlayer, player, volume, isMuted]);
 
   // Platform Playback Controller instance
   const platformDriver = useMemo(() => getPlatformPlayer(Platform.OS), []);
@@ -1409,21 +1413,39 @@ export default function PlayerScreen() {
   useEffect(() => {
     const handleAppStateChange = (nextAppState) => {
       if (nextAppState === 'active') {
-        if (
-          playbackIntentRef.current === 'PLAYING' &&
-          !userPausedRef.current &&
-          player &&
-          !player.playing &&
-          player.status === 'readyToPlay'
-        ) {
-          try {
-            player.play();
-          } catch (_e) {}
+        if (playbackIntentRef.current === 'PLAYING' && !userPausedRef.current) {
+          const activeVlc = vlcPlayerRef.current;
+          if (activeEngineTypeRef.current === ENGINE_TYPE.VLC && activeVlc && !activeVlc.playing) {
+            resumeActiveEnginePlayback({
+              activeEngineType: ENGINE_TYPE.VLC,
+              vlcPlayer: activeVlc,
+              nativePlayer: player,
+              volume: volumeRef.current,
+              isMuted: isMutedRef.current,
+            });
+          } else if (
+            player &&
+            !player.playing &&
+            player.status === 'readyToPlay'
+          ) {
+            resumeActiveEnginePlayback({
+              activeEngineType: ENGINE_TYPE.NATIVE,
+              nativePlayer: player,
+              volume: volumeRef.current,
+              isMuted: isMutedRef.current,
+            });
+          }
         }
       } else if (nextAppState === 'background' || nextAppState === 'inactive') {
         if (player) {
           try {
             player.pause();
+          } catch (_e) {}
+        }
+        const activeVlc = vlcPlayerRef.current;
+        if (activeEngineTypeRef.current === ENGINE_TYPE.VLC && activeVlc) {
+          try {
+            activeVlc.pause();
           } catch (_e) {}
         }
       }
@@ -1616,14 +1638,24 @@ export default function PlayerScreen() {
     if (opReqId !== null && opReqId !== currentReqId) {
       return;
     }
+    if (activeEngineTypeRef.current !== ENGINE_TYPE.NATIVE) {
+      return;
+    }
+    if (Date.now() < manualResumeUntilRef.current) {
+      return;
+    }
     if (!player || playerStateRef.current === 'ERROR' || userPausedRef.current || playbackIntentRef.current === 'PAUSED' || isSeekingRef.current || isSeekingSettlingRef.current) {
       return;
     }
 
     timingRef.current.t7_play = Date.now();
+    applyActiveEngineAudio({
+      activeEngineType: ENGINE_TYPE.NATIVE,
+      nativePlayer: player,
+      volume: volumeRef.current,
+      isMuted: isMutedRef.current,
+    });
     try {
-      player.muted = Boolean(isMutedRef.current || volumeRef.current === 0);
-      player.volume = (typeof volumeRef.current === 'number' && !isNaN(volumeRef.current)) ? volumeRef.current : 1.0;
       player.play();
     } catch (_e) {}
 
@@ -1638,6 +1670,8 @@ export default function PlayerScreen() {
     verifyPlaybackRef.current = setTimeout(() => {
       if (
         currentReqId === requestCounterRef.current &&
+        activeEngineTypeRef.current === ENGINE_TYPE.NATIVE &&
+        Date.now() >= manualResumeUntilRef.current &&
         playbackIntentRef.current === 'PLAYING' &&
         !userPausedRef.current &&
         playerStateRef.current !== 'ERROR' &&
@@ -1645,9 +1679,13 @@ export default function PlayerScreen() {
       ) {
         if (player.status === 'readyToPlay' && !player.playing) {
           logPlayerDiagnostic('vodAutoPlayVerificationRetry', { reqId: currentReqId, status: player.status, platform: Platform.OS });
+          applyActiveEngineAudio({
+            activeEngineType: ENGINE_TYPE.NATIVE,
+            nativePlayer: player,
+            volume: volumeRef.current,
+            isMuted: isMutedRef.current,
+          });
           try {
-            player.muted = Boolean(isMutedRef.current || volumeRef.current === 0);
-            player.volume = (typeof volumeRef.current === 'number' && !isNaN(volumeRef.current)) ? volumeRef.current : 1.0;
             player.play();
           } catch (_e) {}
           if (player.playing) {
@@ -1783,7 +1821,7 @@ export default function PlayerScreen() {
             targetVlc.source = {
               uri: streamUri,
               userAgent: DEFAULT_IPTV_USER_AGENT,
-              vlcOptions: getPlatformVlcOptions({ isLive, subtitleSize: subtitleSizeRef.current || subtitleSize }),
+              vlcOptions: getPlatformVlcOptions({ isLive }),
               title: title || 'Fox Player',
             };
             try { targetVlc.play(); } catch (_e) {}
@@ -2105,7 +2143,7 @@ export default function PlayerScreen() {
         } else {
           setSelectedSubtitleTrack(player?.subtitleTrack || null);
         }
-        reapplyNativeSubtitleSizeWithRetries(subtitleSizeRef.current);
+        reapplyFixedNativeSubtitleStyleWithRetries();
       } catch (_e) {}
     });
 
@@ -2126,7 +2164,7 @@ export default function PlayerScreen() {
     const subSubtitleTracks = player.addListener?.('availableSubtitleTracksChange', ({ availableSubtitleTracks: tracks }) => {
       logPlayerDiagnostic('availableSubtitleTracksChange', { count: tracks?.length || 0 });
       setAvailableSubtitleTracks(normalizeSubtitleTrackList(Array.isArray(tracks) ? tracks : []));
-      reapplyNativeSubtitleSizeWithRetries(subtitleSizeRef.current);
+      reapplyFixedNativeSubtitleStyleWithRetries();
     });
 
     const subSubtitleTrackChange = player.addListener?.('subtitleTrackChange', ({ subtitleTrack: track }) => {
@@ -2134,7 +2172,7 @@ export default function PlayerScreen() {
       if (userSelectedSubtitleRef.current) {
         setSelectedSubtitleTrack(track || null);
       }
-      reapplyNativeSubtitleSizeWithRetries(subtitleSizeRef.current);
+      reapplyFixedNativeSubtitleStyleWithRetries();
     });
 
     const subError = player.addListener?.('error', (err) => {
@@ -2152,6 +2190,8 @@ export default function PlayerScreen() {
     });
 
     const subTime = player.addListener('timeUpdate', ({ currentTime: curr }) => {
+      if (activeEngineTypeRef.current !== ENGINE_TYPE.NATIVE) return;
+
       // 1. If user is dragging seekbar thumb, do not update UI from native ticks
       if (isSeekingRef.current) return;
 
@@ -2439,11 +2479,13 @@ export default function PlayerScreen() {
     userSelectedSubtitleRef.current = Boolean(track);
     const targetIndex = trackIndex ?? track?._originalIndex ?? null;
 
-    if (activeEngineType === ENGINE_TYPE.VLC && vlcPlayer) {
+    if (activeEngineType === ENGINE_TYPE.VLC) {
+      const activeVlc = vlcPlayerRef.current || vlcPlayer || getOrCreateVlcPlayer();
+      if (!activeVlc) return;
       try {
         let trackId = -1;
         if (track) {
-          const vlcSubs = vlcPlayer.subtitleTracks || [];
+          const vlcSubs = activeVlc.subtitleTracks || [];
           if (track.id != null && !isNaN(Number(track.id))) {
             trackId = Number(track.id);
           } else if (targetIndex !== null && vlcSubs[targetIndex]?.id != null) {
@@ -2453,12 +2495,13 @@ export default function PlayerScreen() {
           }
         }
 
-        if (typeof vlcPlayer.setSubtitleTrack === 'function') {
-          vlcPlayer.setSubtitleTrack(trackId);
-        } else if (typeof vlcPlayer.selectSubtitleTrack === 'function') {
-          vlcPlayer.selectSubtitleTrack(trackId);
+        if (typeof activeVlc.setSubtitleTrack === 'function') {
+          activeVlc.setSubtitleTrack(trackId);
+        } else if (typeof activeVlc.selectSubtitleTrack === 'function') {
+          activeVlc.selectSubtitleTrack(trackId);
         }
         setSelectedSubtitleTrack(track);
+        applyFixedSubtitles({ activeEngineType: ENGINE_TYPE.VLC });
         logPlayerDiagnostic('selectSubtitleTrackVLC', { playbackEngine: 'vlc', trackId });
       } catch (err) {
         logPlayerDiagnostic('selectSubtitleTrackVLCError', { error: err?.message });
@@ -2503,12 +2546,12 @@ export default function PlayerScreen() {
       track = subToApply;
       player.subtitleTrack = track;
       setSelectedSubtitleTrack(track);
-      reapplyNativeSubtitleSizeWithRetries(subtitleSizeRef.current);
+      reapplyFixedNativeSubtitleStyleWithRetries();
       logPlayerDiagnostic('selectSubtitleTrack', { label: track?.label, language: track?.language, id: track?.id });
     } catch (err) {
       logPlayerDiagnostic('selectSubtitleTrackError', { error: err?.message });
     }
-  }, [player, activeEngineType, vlcPlayer, availableSubtitleTracks]);
+  }, [player, activeEngineType, vlcPlayer, getOrCreateVlcPlayer, availableSubtitleTracks]);
 
   const isGestureActiveRef = useRef(false);
 
@@ -2663,12 +2706,25 @@ export default function PlayerScreen() {
       playerStateRef.current = 'PLAYING';
       setPlayerState('PLAYING');
       playbackIntentRef.current = 'PLAYING';
+      manualResumeUntilRef.current = Date.now() + 900;
+      const resumeLifecycle = {
+        isStillActive: () => playbackIntentRef.current === 'PLAYING' && !userPausedRef.current,
+      };
       if (activeEngineType === ENGINE_TYPE.VLC && vlcPlayer) {
-        try { vlcPlayer.play(); } catch (_e) {}
+        resumeActiveEnginePlayback({
+          activeEngineType: ENGINE_TYPE.VLC,
+          vlcPlayer,
+          nativePlayer: player,
+          volume: volumeRef.current,
+          isMuted: isMutedRef.current,
+        }, resumeLifecycle);
       } else {
-        try {
-          player.play();
-        } catch (_e) {}
+        resumeActiveEnginePlayback({
+          activeEngineType: ENGINE_TYPE.NATIVE,
+          nativePlayer: player,
+          volume: volumeRef.current,
+          isMuted: isMutedRef.current,
+        }, resumeLifecycle);
       }
       if (bufferTimerRef.current) {
         clearTimeout(bufferTimerRef.current);
@@ -2678,6 +2734,7 @@ export default function PlayerScreen() {
       setDebouncedBuffering(false);
       confirmPlaybackActive(requestCounterRef.current);
     } else {
+      cancelPostResumeAudioSync();
       playerStateRef.current = 'PAUSED';
       setPlayerState('PAUSED');
       playbackIntentRef.current = 'PAUSED';
@@ -2915,7 +2972,7 @@ export default function PlayerScreen() {
         vlcPlayer.source = {
           uri: streamUri,
           userAgent: DEFAULT_IPTV_USER_AGENT,
-          vlcOptions: getPlatformVlcOptions({ isLive, subtitleSize: subtitleSizeRef.current || subtitleSize }),
+          vlcOptions: getPlatformVlcOptions({ isLive }),
           title: title || 'Fox Player',
         };
         try { vlcPlayer.play(); } catch (_e) {}
@@ -3003,6 +3060,8 @@ export default function PlayerScreen() {
 
       const isCurrentlyPlaying = playerState === 'PLAYING';
       if (isCurrentlyPlaying) {
+        cancelPostResumeAudioSync();
+        manualResumeUntilRef.current = 0;
         userPausedRef.current = true;
         playbackIntentRef.current = 'PAUSED';
         try { vlcPlayer.pause(); } catch (_e) {}
@@ -3011,7 +3070,16 @@ export default function PlayerScreen() {
       } else {
         userPausedRef.current = false;
         playbackIntentRef.current = 'PLAYING';
-        try { vlcPlayer.play(); } catch (_e) {}
+        manualResumeUntilRef.current = Date.now() + 900;
+        resumeActiveEnginePlayback({
+          activeEngineType: ENGINE_TYPE.VLC,
+          vlcPlayer,
+          nativePlayer: player,
+          volume: volumeRef.current,
+          isMuted: isMutedRef.current,
+        }, {
+          isStillActive: () => playbackIntentRef.current === 'PLAYING' && !userPausedRef.current,
+        });
         playerStateRef.current = 'PLAYING';
         setPlayerState('PLAYING');
       }
@@ -3031,6 +3099,12 @@ export default function PlayerScreen() {
       lastAdvanceTimeRef.current = Date.now();
       try {
         player.currentTime = 0;
+        applyActiveEngineAudio({
+          activeEngineType: ENGINE_TYPE.NATIVE,
+          nativePlayer: player,
+          volume: volumeRef.current,
+          isMuted: isMutedRef.current,
+        });
         player.play();
       } catch (_e) {}
       setCurrentTime(0);
@@ -3045,6 +3119,8 @@ export default function PlayerScreen() {
     const shouldPause = (playbackIntentRef.current === 'PLAYING' && !userPausedRef.current) || (typeof player.playing === 'boolean' ? player.playing : false) || playerState === 'PLAYING';
 
     if (shouldPause) {
+      cancelPostResumeAudioSync();
+      manualResumeUntilRef.current = 0;
       userPausedRef.current = true;
       playbackIntentRef.current = 'PAUSED';
       try { player.pause(); } catch (_e) {}
@@ -3056,7 +3132,15 @@ export default function PlayerScreen() {
       userPausedRef.current = false;
       playbackIntentRef.current = 'PLAYING';
       lastAdvanceTimeRef.current = Date.now();
-      try { player.play(); } catch (_e) {}
+      manualResumeUntilRef.current = Date.now() + 900;
+      resumeActiveEnginePlayback({
+        activeEngineType: ENGINE_TYPE.NATIVE,
+        nativePlayer: player,
+        volume: volumeRef.current,
+        isMuted: isMutedRef.current,
+      }, {
+        isStillActive: () => playbackIntentRef.current === 'PLAYING' && !userPausedRef.current,
+      });
       if (player.status === 'readyToPlay' && player.playing) {
         playerStateRef.current = 'PLAYING';
         setPlayerState('PLAYING');
@@ -3288,8 +3372,6 @@ export default function PlayerScreen() {
                 availableSubtitleTracks={availableSubtitleTracks}
                 selectedSubtitleTrack={selectedSubtitleTrack}
                 onSelectSubtitleTrack={handleSelectSubtitleTrack}
-                subtitleSize={subtitleSize}
-                onSelectSubtitleSize={handleSelectSubtitleSize}
                 onBeforeOpenTrackModal={handleBeforeOpenTrackModal}
                 activeEngineType={activeEngineType}
                 engineMode={engineMode}
