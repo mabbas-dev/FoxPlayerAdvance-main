@@ -59,7 +59,8 @@
     "start": "expo start",
     "android": "expo run:android",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "postinstall": "node plugins/withFoxSubtitleFontSize.js && node plugins/withFoxVlcSubtitleFontSize.js"
   },
   "jest": {
     "preset": "jest-expo"

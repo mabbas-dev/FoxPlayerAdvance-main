@@ -65,6 +65,14 @@ export const SUBTITLE_SIZE_LABELS = {
   extra_large: 'Extra Large',
 };
 
+/** Strict preset id; unknown values fall back to normal. */
+export function normalizeSubtitleSizeId(sizeId) {
+  if (sizeId && Object.prototype.hasOwnProperty.call(SUBTITLE_FONT_SIZES, sizeId)) {
+    return sizeId;
+  }
+  return SUBTITLE_SIZE.NORMAL;
+}
+
 // Default Settings
 export const DEFAULT_PLAYER_SETTINGS = {
   preferredEngine: ENGINE_MODE.AUTO,
@@ -267,6 +275,7 @@ export async function loadPlayerSettings() {
       cachedSettings = {
         ...DEFAULT_PLAYER_SETTINGS,
         ...raw,
+        subtitleSize: normalizeSubtitleSizeId(raw.subtitleSize),
       };
     } else {
       // Migrate from legacy single-key storage if present
@@ -323,10 +332,18 @@ export async function savePlayerSettings(partial = {}) {
     maxRetries = Math.max(1, Math.min(5, Math.round(partial.maxRetryAttempts)));
   }
 
+  const normalizedPartial = { ...partial };
+  if (normalizedPartial.subtitleSize !== undefined) {
+    normalizedPartial.subtitleSize = normalizeSubtitleSizeId(normalizedPartial.subtitleSize);
+  }
+
   const nextSettings = {
     ...cachedSettings,
-    ...partial,
+    ...normalizedPartial,
     maxRetryAttempts: maxRetries,
+    subtitleSize: normalizeSubtitleSizeId(
+      normalizedPartial.subtitleSize ?? cachedSettings.subtitleSize,
+    ),
   };
 
   cachedSettings = nextSettings;

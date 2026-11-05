@@ -494,8 +494,15 @@ export function logPlayerDiagnostic(event, meta = {}) {
     safeMeta.platform = Platform.OS;
   }
 
-  safeMeta.engine = safeMeta.platform === 'ios' ? 'AVFoundation / AVPlayer' : 'Media3 / ExoPlayer';
-  safeMeta.playerLibrary = 'expo-video ~57.0.5';
+  if (!safeMeta.engine) {
+    if (safeMeta.playbackEngine === 'vlc') {
+      safeMeta.engine = 'libVLC / rn-vlc-plyr';
+      safeMeta.playerLibrary = 'rn-vlc-plyr ~1.0.1';
+    } else {
+      safeMeta.engine = safeMeta.platform === 'ios' ? 'AVFoundation / AVPlayer' : 'Media3 / ExoPlayer';
+      safeMeta.playerLibrary = 'expo-video ~57.0.5';
+    }
+  }
   if (Platform.Version != null) {
     safeMeta.osVersion = String(Platform.Version);
   }
@@ -520,17 +527,21 @@ export function logPlayerDiagnostic(event, meta = {}) {
  * @returns {Array<string>} List of VLC command-line media options
  */
 export function getPlatformVlcOptions({ isLive = false, subtitleSize = 'normal' } = {}) {
-  const sizeMap = {
-    small: 12,
-    normal: 18,
-    large: 28,
-    extra_large: 40,
-  };
-  const fontSizePx = sizeMap[subtitleSize] || 18;
+  let fontSizePx = 18;
+  let relFontSize = 0;
+  try {
+    const { SUBTITLE_FONT_SIZES } = require('../playback/playerSettings.js');
+    fontSizePx = SUBTITLE_FONT_SIZES[subtitleSize] || SUBTITLE_FONT_SIZES.normal || 18;
+  } catch (_e) {
+    fontSizePx = 18;
+  }
+  const relMap = { small: -3, normal: 0, large: 2, extra_large: 4 };
+  relFontSize = relMap[subtitleSize] ?? 0;
   const base = [
     ':network-caching=1500',
     ':http-reconnect',
     `:freetype-fontsize=${fontSizePx}`,
+    `:freetype-rel-fontsize=${relFontSize}`,
     ':freetype-color=16777215',
   ];
   if (isLive) {

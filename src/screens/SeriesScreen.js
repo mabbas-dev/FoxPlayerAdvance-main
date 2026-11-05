@@ -10,7 +10,8 @@ import {
   ActivityIndicator,
   BackHandler,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { consumeSeriesReturnHighlight } from '../utils/seriesReturnHighlight.js';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../state/AppContext';
 import { addRecentlyWatched } from '../storage/userStorage';
@@ -86,6 +87,19 @@ function estimateCachedSeriesTotal(cached) {
   return sum;
 }
 
+/** In-memory detail session so returning from player does not refetch seasons/episodes */
+const seriesDetailMemoryCache = new Map();
+
+function readSeriesDetailSession(playlistId, seriesId) {
+  if (!seriesId) return null;
+  return seriesDetailMemoryCache.get(`${String(playlistId || 'default')}:${String(seriesId)}`) || null;
+}
+
+function writeSeriesDetailSession(playlistId, seriesId, session) {
+  if (!seriesId || !session?.detail?.seasons?.length) return;
+  seriesDetailMemoryCache.set(`${String(playlistId || 'default')}:${String(seriesId)}`, session);
+}
+
 export default function SeriesScreen() {
   const {
     seriesData,
@@ -117,6 +131,9 @@ export default function SeriesScreen() {
 
   const dismissedRouteSeriesIdRef = useRef('');
   const autoPlayTriggeredRef = useRef(false);
+  const selectedSeriesRef = useRef(null);
+  const seriesDetailRef = useRef(null);
+  const lastAppliedFocusAtRef = useRef('');
 
   // Initialize directly from in-memory cache if already loaded for CURRENT playlist (0ms latency on tab switch)
   const isPreloaded = Boolean(
@@ -155,6 +172,24 @@ export default function SeriesScreen() {
   const [selectedSeason, setSelectedSeason] = useState(null);
   const [loadingDetail, setLoadingDetail]   = useState(false);
   const [detailError, setDetailError]       = useState(null);
+
+  useEffect(() => {
+    selectedSeriesRef.current = selectedSeries;
+  }, [selectedSeries]);
+
+  useEffect(() => {
+    seriesDetailRef.current = seriesDetail;
+  }, [seriesDetail]);
+
+  useEffect(() => {
+    if (!selectedSeries || !seriesDetail?.seasons?.length) return;
+    const sid = String(selectedSeries.seriesId || selectedSeries.id || '');
+    if (!sid) return;
+    writeSeriesDetailSession(activePlaylistId, sid, {
+      detail: seriesDetail,
+      selectedSeason,
+    });
+  }, [selectedSeries, seriesDetail, selectedSeason, activePlaylistId]);
 
   // Debounce search query to keep typing responsive at 60fps
   useEffect(() => {
@@ -849,6 +884,32 @@ export default function SeriesScreen() {
   // Open Series Detail
   const handleSeriesPress = useCallback(async (sItem) => {
     if (isExpired) return;
+
+    const incomingKey = String(sItem.seriesId || sItem.id || '');
+    const openKey = String(
+      selectedSeriesRef.current?.seriesId || selectedSeriesRef.current?.id || '',
+    );
+    if (
+      incomingKey &&
+      openKey === incomingKey &&
+      seriesDetailRef.current?.seasons?.length > 0
+    ) {
+      setSelectedSeries((prev) => ({ ...(prev || {}), ...sItem }));
+      setDetailError(null);
+      setLoadingDetail(false);
+      return;
+    }
+
+    const cachedSession = readSeriesDetailSession(activePlaylistId, incomingKey);
+    if (cachedSession?.detail?.seasons?.length) {
+      setSelectedSeries(sItem);
+      setSeriesDetail(cachedSession.detail);
+      setSelectedSeason(cachedSession.selectedSeason || cachedSession.detail.seasons[0]);
+      setDetailError(null);
+      setLoadingDetail(false);
+      return;
+    }
+
     setSelectedSeries(sItem);
     setDetailError(null);
     setSeriesDetail(null);
@@ -1050,8 +1111,26 @@ export default function SeriesScreen() {
     if (!autoPlayEpisode) {
       autoPlayTriggeredRef.current = false;
     }
+    if (lastAppliedFocusAtRef.current === String(focusAt)) return;
+    lastAppliedFocusAtRef.current = String(focusAt);
     focusEpisodeInDetail(seriesDetail, episodeStreamId);
   }, [episodeStreamId, seriesDetail, selectedSeries, focusAt, autoPlayEpisode, focusEpisodeInDetail]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!selectedSeries || !seriesDetail?.seasons?.length) return undefined;
+      const seriesKey = String(selectedSeries.id || selectedSeries.seriesId || '');
+      if (!seriesKey) return undefined;
+
+      const epToHighlight = consumeSeriesReturnHighlight(seriesKey);
+      if (!epToHighlight) return undefined;
+
+      const timer = setTimeout(() => {
+        focusEpisodeInDetail(seriesDetail, epToHighlight);
+      }, 120);
+      return () => clearTimeout(timer);
+    }, [selectedSeries, seriesDetail, focusEpisodeInDetail]),
+  );
 
   useEffect(() => {
     if (!autoPlayEpisode || autoPlayTriggeredRef.current || loadingDetail) return;

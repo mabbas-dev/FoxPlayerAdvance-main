@@ -16,6 +16,11 @@ import {
   CheckIcon,
   CloseXIcon,
 } from './Icons';
+import {
+  SUBTITLE_SIZE,
+  SUBTITLE_FONT_SIZES,
+  normalizeSubtitleSizeId,
+} from '../playback/playerSettings.js';
 
 // Comprehensive language map for converting ISO codes to friendly display names
 const LANGUAGE_NAMES = {
@@ -79,12 +84,16 @@ const LANGUAGE_NAMES = {
   und: 'Original Audio',
 };
 
-// Caption font size presets
+// Caption font size presets (S / N / L / XL → playerSettings px map)
 export const SUBTITLE_SIZES = [
-  { id: 'small', label: 'Small', sizePx: 14 },
-  { id: 'normal', label: 'Normal', sizePx: 18 },
-  { id: 'large', label: 'Large', sizePx: 24 },
-  { id: 'extra_large', label: 'Extra Large', sizePx: 32 },
+  { id: SUBTITLE_SIZE.SMALL, label: 'Small', sizePx: SUBTITLE_FONT_SIZES.small },
+  { id: SUBTITLE_SIZE.NORMAL, label: 'Normal', sizePx: SUBTITLE_FONT_SIZES.normal },
+  { id: SUBTITLE_SIZE.LARGE, label: 'Large', sizePx: SUBTITLE_FONT_SIZES.large },
+  {
+    id: SUBTITLE_SIZE.EXTRA_LARGE,
+    label: 'Extra Large',
+    sizePx: SUBTITLE_FONT_SIZES.extra_large,
+  },
 ];
 
 /**
@@ -181,7 +190,9 @@ export default function TrackSelectionModal({
   onSelectSubtitleSize,
 }) {
   const [selectedTab, setSelectedTab] = useState(initialTab || 'audio');
-  const [currentSubtitleSize, setCurrentSubtitleSize] = useState(subtitleSize || 'normal');
+  const [currentSubtitleSize, setCurrentSubtitleSize] = useState(
+    () => normalizeSubtitleSizeId(subtitleSize),
+  );
 
   // Pop animation values
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
@@ -193,7 +204,7 @@ export default function TrackSelectionModal({
     if (visible) {
       setIsRendered(true);
       setSelectedTab(initialTab || 'audio');
-      setCurrentSubtitleSize(subtitleSize || 'normal');
+      setCurrentSubtitleSize(normalizeSubtitleSizeId(subtitleSize));
 
       scaleAnim.setValue(0.85);
       opacityAnim.setValue(0);

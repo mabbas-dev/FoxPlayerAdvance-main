@@ -68,11 +68,13 @@ import {
   validateEngineSelection,
 } from '../playback/playerSettings.js';
 import { safeBack, getRouteParam } from '../utils/navigation';
+import { setSeriesReturnHighlight } from '../utils/seriesReturnHighlight.js';
 import { addRecentlyWatched, updateRecentlyWatchedProgress } from '../storage/userStorage';
 import { measureAndLogLayout } from '../utils/layoutDiagnostics';
 import {
-  applySubtitleFontSizeEverywhere,
+  applySubtitleFontSizeForPlayback,
   applyNativeSubtitleFontSize,
+  reapplyNativeSubtitleSizeWithRetries,
 } from '../utils/subtitleAppearance.js';
 import SeriesNextEpisodeOverlay from '../components/SeriesNextEpisodeOverlay.js';
 import {
@@ -96,6 +98,8 @@ try {
 const SPEEDS    = [1.0, 1.25, 1.5, 2.0];
 const FIT_MODES = ['contain', 'cover', 'fill'];
 const UP_NEXT_PREVIEW_BEFORE_END_SEC = 10;
+/** Leave preview zone (rewind) — clears "Not now" snooze and hides card */
+const UP_NEXT_LEAVE_PREVIEW_SEC = 10.75;
 
 export default function PlayerScreen() {
   const searchParams = useLocalSearchParams();
@@ -199,8 +203,11 @@ export default function PlayerScreen() {
   const [selectedAudioTrack, setSelectedAudioTrack]     = useState(null);
   const [availableSubtitleTracks, setAvailableSubtitleTracks] = useState([]);
   const [selectedSubtitleTrack, setSelectedSubtitleTrack]     = useState(null);
-  const [subtitleSize, setSubtitleSize]                 = useState(() => getPlayerSettings()?.subtitleSize || 'normal');
-  const subtitleSizeRef                                 = useRef(getPlayerSettings()?.subtitleSize || 'normal');
+  const [subtitleSize, setSubtitleSize]                 = useState(() => {
+    const { normalizeSubtitleSizeId } = require('../playback/playerSettings.js');
+    return normalizeSubtitleSizeId(getPlayerSettings()?.subtitleSize);
+  });
+  const subtitleSizeRef                                 = useRef(subtitleSize);
   const userSelectedSubtitleRef                         = useRef(false);
 
   useEffect(() => {
@@ -208,10 +215,15 @@ export default function PlayerScreen() {
       if (newSettings?.subtitleSize) {
         setSubtitleSize(newSettings.subtitleSize);
         subtitleSizeRef.current = newSettings.subtitleSize;
+        applySubtitleFontSizeForPlayback({
+          newSize: newSettings.subtitleSize,
+          activeEngineType: activeEngineTypeRef.current,
+          vlcPlayer,
+        });
       }
     });
     return () => unsub?.();
-  }, []);
+  }, [vlcPlayer]);
 
   // Stable mutable refs — only read inside event-handlers / effects, never during render
   const playbackIntentRef   = useRef('PLAYING'); // Tracks genuine user playback intent ('PLAYING' | 'PAUSED')
@@ -253,10 +265,15 @@ export default function PlayerScreen() {
   const seriesEndHandledRef = useRef(false);
   const vodEndTriggeredRef = useRef(false);
   const nextEpisodeLookupStartedRef = useRef(false);
-  const nextEpisodeDismissedRef = useRef(false);
+  const upNextSnoozedRef = useRef(false);
+  const nextEpisodeOfferVisibleRef = useRef(false);
+  const upNextEpochRef = useRef(0);
+  const upNextSeekOriginRef = useRef(null);
   const nextEpisodePayloadRef = useRef(null);
   const fetchNextEpisodeOfferRef = useRef(async () => {});
+  const syncUpNextPlaybackRef = useRef(() => {});
   const checkNearEndForSeriesOfferRef = useRef(() => {});
+  const syncUpNextAfterSeekRef = useRef(() => {});
   const [nextEpisodeOffer, setNextEpisodeOffer] = useState(null);
   const seekFeedbackAnimRef = useRef(new Animated.Value(0));
   const controlsOpacityRef  = useRef(new Animated.Value(1));
@@ -369,24 +386,18 @@ export default function PlayerScreen() {
   }), [normalized]);
 
   const handleSelectSubtitleSize = useCallback((newSize) => {
-    if (!newSize) return;
-    setSubtitleSize(newSize);
-    subtitleSizeRef.current = newSize;
-    savePlayerSettings({ subtitleSize: newSize }).catch(() => {});
-    const resumeTimeMs = Math.max(
-      0,
-      Math.floor(currentTimeRef.current || player?.currentTime || 0),
-    );
-    applySubtitleFontSizeEverywhere({
-      newSize,
+    const { normalizeSubtitleSizeId } = require('../playback/playerSettings.js');
+    const size = normalizeSubtitleSizeId(newSize);
+    if (!size) return;
+    setSubtitleSize(size);
+    subtitleSizeRef.current = size;
+    savePlayerSettings({ subtitleSize: size }).catch(() => {});
+    applySubtitleFontSizeForPlayback({
+      newSize: size,
       activeEngineType: activeEngineTypeRef.current,
       vlcPlayer,
-      streamUri: validation.uri || sanitizedUrl || url,
-      isLive,
-      title: title || 'Stream',
-      resumeTimeMs,
     });
-  }, [vlcPlayer, validation.uri, sanitizedUrl, url, isLive, title, player]);
+  }, [vlcPlayer]);
 
   useEffect(() => {
     applyNativeSubtitleFontSize(subtitleSizeRef.current || subtitleSize);
@@ -543,7 +554,9 @@ export default function PlayerScreen() {
     seriesEndHandledRef.current = false;
     vodEndTriggeredRef.current = false;
     nextEpisodeLookupStartedRef.current = false;
-    nextEpisodeDismissedRef.current = false;
+    upNextSnoozedRef.current = false;
+    nextEpisodeOfferVisibleRef.current = false;
+    upNextEpochRef.current += 1;
     setNextEpisodeOffer(null);
     nextEpisodePayloadRef.current = null;
   }, [url, episodeStreamId, streamId]);
@@ -555,6 +568,7 @@ export default function PlayerScreen() {
       return;
     }
     const { resolved } = payload;
+    nextEpisodeOfferVisibleRef.current = false;
     setNextEpisodeOffer(null);
     seriesEndHandledRef.current = false;
     vodEndTriggeredRef.current = false;
@@ -601,26 +615,67 @@ export default function PlayerScreen() {
   }, [activePlaylistId, router, returnTo]);
 
   const dismissNextEpisodeOffer = useCallback(() => {
+    upNextSnoozedRef.current = true;
+    nextEpisodeOfferVisibleRef.current = false;
     setNextEpisodeOffer(null);
-    nextEpisodeDismissedRef.current = true;
-    seriesEndHandledRef.current = true;
+  }, []);
+
+  const publishUpNextOffer = useCallback((episodeFinished) => {
+    const offer = nextEpisodePayloadRef.current?.offer;
+    if (!offer) return;
+    nextEpisodeOfferVisibleRef.current = true;
+    setNextEpisodeOffer((prev) => {
+      if (
+        prev &&
+        prev.episodeFinished === Boolean(episodeFinished) &&
+        prev.episodeLabel === offer.episodeLabel &&
+        prev.seriesTitle === offer.seriesTitle
+      ) {
+        return prev;
+      }
+      return { ...offer, episodeFinished: Boolean(episodeFinished) };
+    });
+  }, []);
+
+  const hideUpNextOfferUi = useCallback(() => {
+    if (!nextEpisodeOfferVisibleRef.current) return;
+    nextEpisodeOfferVisibleRef.current = false;
+    setNextEpisodeOffer(null);
+  }, []);
+
+  const resumeAfterEndedRewind = useCallback(() => {
+    if (!vodEndTriggeredRef.current && !hasEndedRef.current) return;
+    vodEndTriggeredRef.current = false;
+    hasEndedRef.current = false;
+    userPausedRef.current = false;
+    playbackIntentRef.current = 'PLAYING';
+    wasPlayingBeforeSeekRef.current = true;
+  }, []);
+
+  const getUpNextRemainingSec = useCallback((currSec, durSec) => {
+    const dur = durSec > 0 ? durSec : durationRef.current || 0;
+    if (!dur) return null;
+    const pos = Number.isFinite(currSec) ? currSec : currentTimeRef.current || 0;
+    return Math.max(0, dur - pos);
   }, []);
 
   const fetchAndShowNextEpisodeOffer = useCallback(async (episodeFinished = false) => {
-    if (!isSeriesPlayback || nextEpisodeDismissedRef.current) return;
+    if (!isSeriesPlayback) return;
 
-    if (nextEpisodePayloadRef.current) {
-      if (episodeFinished) {
-        persistPlaybackProgress();
-        setNextEpisodeOffer((prev) =>
-          prev ? { ...prev, episodeFinished: true } : prev,
-        );
-      }
+    const remainingNow = getUpNextRemainingSec(currentTimeRef.current, durationRef.current);
+    const inPreviewWindow = remainingNow != null && remainingNow <= UP_NEXT_PREVIEW_BEFORE_END_SEC;
+    const shouldShow = Boolean(episodeFinished) || inPreviewWindow;
+
+    if (nextEpisodePayloadRef.current?.offer) {
+      if (!shouldShow || upNextSnoozedRef.current) return;
+      if (episodeFinished) persistPlaybackProgress();
+      publishUpNextOffer(episodeFinished);
       return;
     }
 
     if (nextEpisodeLookupStartedRef.current) return;
     nextEpisodeLookupStartedRef.current = true;
+    const epoch = upNextEpochRef.current;
 
     const currentEpId =
       episodeStreamId ||
@@ -636,6 +691,10 @@ export default function PlayerScreen() {
     const loaded = await loadSeriesDetailForPlayback(activePlaylistId, seriesKey, {
       categoryId: backCategoryId,
     });
+    if (epoch !== upNextEpochRef.current) {
+      nextEpisodeLookupStartedRef.current = false;
+      return;
+    }
     if (!loaded?.seasons?.length) {
       nextEpisodeLookupStartedRef.current = false;
       return;
@@ -666,13 +725,12 @@ export default function PlayerScreen() {
       return;
     }
 
-    if (episodeFinished) {
-      persistPlaybackProgress();
+    if (epoch !== upNextEpochRef.current) {
+      nextEpisodeLookupStartedRef.current = false;
+      return;
     }
 
-    nextEpisodePayloadRef.current = { resolved, nextEntry, seriesMeta: loaded.seriesMeta };
-    setNextEpisodeOffer({
-      episodeFinished: Boolean(episodeFinished),
+    const offer = {
       seriesTitle: loaded.seriesMeta?.name || loaded.seriesMeta?.title || '',
       episodeLabel: formatNextEpisodeLabel(nextEntry),
       posterUri:
@@ -682,10 +740,21 @@ export default function PlayerScreen() {
         poster,
       posterItem: nextEntry.episode,
       serverUrl: loaded.seriesMeta?.serverUrl || cfg.server_url || cfg.serverUrl || '',
-    });
+    };
+    nextEpisodePayloadRef.current = { resolved, nextEntry, seriesMeta: loaded.seriesMeta, offer };
+
+    const remainingAfter = getUpNextRemainingSec(currentTimeRef.current, durationRef.current);
+    const stillShow = Boolean(episodeFinished) || (
+      remainingAfter != null && remainingAfter <= UP_NEXT_PREVIEW_BEFORE_END_SEC
+    );
+    if (!stillShow || upNextSnoozedRef.current) return;
+    if (episodeFinished) persistPlaybackProgress();
+    publishUpNextOffer(episodeFinished);
   }, [
     isSeriesPlayback,
     persistPlaybackProgress,
+    publishUpNextOffer,
+    getUpNextRemainingSec,
     episodeStreamId,
     streamId,
     recentEntryId,
@@ -696,6 +765,38 @@ export default function PlayerScreen() {
     poster,
     url,
   ]);
+
+  const syncUpNextPlaybackPosition = useCallback((currSec, durSec, { episodeFinished = false } = {}) => {
+    if (isLive || !isSeriesPlayback) return;
+    const dur = durSec > 0 ? durSec : durationRef.current;
+    if (!dur || dur < UP_NEXT_PREVIEW_BEFORE_END_SEC + 3) return;
+
+    const remaining = getUpNextRemainingSec(currSec, dur);
+    if (remaining == null) return;
+
+    if (remaining > UP_NEXT_LEAVE_PREVIEW_SEC) {
+      upNextSnoozedRef.current = false;
+      hideUpNextOfferUi();
+      return;
+    }
+
+    if (remaining > UP_NEXT_PREVIEW_BEFORE_END_SEC) {
+      hideUpNextOfferUi();
+      if (remaining <= UP_NEXT_PREVIEW_BEFORE_END_SEC + 2) {
+        fetchNextEpisodeOfferRef.current?.(false);
+      }
+      return;
+    }
+
+    const finished = Boolean(episodeFinished)
+      || vodEndTriggeredRef.current
+      || hasEndedRef.current
+      || remaining <= 1.0;
+
+    if (upNextSnoozedRef.current) return;
+
+    fetchNextEpisodeOfferRef.current?.(finished);
+  }, [isLive, isSeriesPlayback, getUpNextRemainingSec, hideUpNextOfferUi]);
 
   const handleVodPlaybackEnded = useCallback(() => {
     if (isLive || !isSeriesPlayback) return;
@@ -712,27 +813,43 @@ export default function PlayerScreen() {
     }
     if (bufferTimerRef.current) clearTimeout(bufferTimerRef.current);
     setIsBufferingUI(false);
-    fetchNextEpisodeOfferRef.current?.(true);
-  }, [isLive, isSeriesPlayback, type]);
+    syncUpNextPlaybackPosition(
+      durationRef.current,
+      durationRef.current,
+      { episodeFinished: true },
+    );
+  }, [isLive, isSeriesPlayback, type, syncUpNextPlaybackPosition]);
 
   const checkNearEndForSeriesOffer = useCallback((currSec, durSec) => {
-    if (isLive || !isSeriesPlayback || nextEpisodeDismissedRef.current) return;
+    if (isSeekingRef.current || isSeekingSettlingRef.current) return;
     if (!hasEverPlayedRef.current) return;
-    const dur = durSec > 0 ? durSec : durationRef.current;
-    if (!dur || dur < UP_NEXT_PREVIEW_BEFORE_END_SEC + 5) return;
+    syncUpNextPlaybackPosition(currSec, durSec);
+  }, [syncUpNextPlaybackPosition]);
 
-    if (currSec >= Math.max(0, dur - UP_NEXT_PREVIEW_BEFORE_END_SEC)) {
-      fetchNextEpisodeOfferRef.current?.(false);
+  const syncUpNextAfterSeek = useCallback((targetSec) => {
+    if (!isSeriesPlayback) return;
+    const endedByPlayback = vodEndTriggeredRef.current || hasEndedRef.current;
+    syncUpNextPlaybackPosition(targetSec, durationRef.current);
+    if (endedByPlayback && getUpNextRemainingSec(targetSec, durationRef.current) > 1.5) {
+      resumeAfterEndedRewind();
     }
-  }, [isLive, isSeriesPlayback]);
+  }, [isSeriesPlayback, syncUpNextPlaybackPosition, getUpNextRemainingSec, resumeAfterEndedRewind]);
 
   useEffect(() => {
     fetchNextEpisodeOfferRef.current = fetchAndShowNextEpisodeOffer;
   }, [fetchAndShowNextEpisodeOffer]);
 
   useEffect(() => {
+    syncUpNextPlaybackRef.current = syncUpNextPlaybackPosition;
+  }, [syncUpNextPlaybackPosition]);
+
+  useEffect(() => {
     checkNearEndForSeriesOfferRef.current = checkNearEndForSeriesOffer;
   }, [checkNearEndForSeriesOffer]);
+
+  useEffect(() => {
+    syncUpNextAfterSeekRef.current = syncUpNextAfterSeek;
+  }, [syncUpNextAfterSeek]);
 
   useEffect(() => {
     if (isLive) return undefined;
@@ -1140,7 +1257,7 @@ export default function PlayerScreen() {
       if (typeof vlcPlayer.addOnErrorListener === 'function') {
         const sub = vlcPlayer.addOnErrorListener((err) => {
           if (activeEngineTypeRef.current !== ENGINE_TYPE.VLC || isSwitchingEngineRef.current) return;
-          logPlayerDiagnostic('vlcPlaybackError', { error: err });
+          logPlayerDiagnostic('vlcPlaybackError', { playbackEngine: 'vlc', error: err });
           if (engineMode === ENGINE_MODE.AUTO && nativeAttemptsRef.current < 1) {
             switchEngine(ENGINE_TYPE.NATIVE, ENGINE_SWITCH_REASON.AUTO_FALLBACK);
           } else {
@@ -1988,6 +2105,7 @@ export default function PlayerScreen() {
         } else {
           setSelectedSubtitleTrack(player?.subtitleTrack || null);
         }
+        reapplyNativeSubtitleSizeWithRetries(subtitleSizeRef.current);
       } catch (_e) {}
     });
 
@@ -2008,6 +2126,7 @@ export default function PlayerScreen() {
     const subSubtitleTracks = player.addListener?.('availableSubtitleTracksChange', ({ availableSubtitleTracks: tracks }) => {
       logPlayerDiagnostic('availableSubtitleTracksChange', { count: tracks?.length || 0 });
       setAvailableSubtitleTracks(normalizeSubtitleTrackList(Array.isArray(tracks) ? tracks : []));
+      reapplyNativeSubtitleSizeWithRetries(subtitleSizeRef.current);
     });
 
     const subSubtitleTrackChange = player.addListener?.('subtitleTrackChange', ({ subtitleTrack: track }) => {
@@ -2015,6 +2134,7 @@ export default function PlayerScreen() {
       if (userSelectedSubtitleRef.current) {
         setSelectedSubtitleTrack(track || null);
       }
+      reapplyNativeSubtitleSizeWithRetries(subtitleSizeRef.current);
     });
 
     const subError = player.addListener?.('error', (err) => {
@@ -2339,10 +2459,7 @@ export default function PlayerScreen() {
           vlcPlayer.selectSubtitleTrack(trackId);
         }
         setSelectedSubtitleTrack(track);
-        if (track) {
-          applyNativeSubtitleFontSize(subtitleSizeRef.current || subtitleSize);
-        }
-        logPlayerDiagnostic('selectSubtitleTrackVLC', { trackId });
+        logPlayerDiagnostic('selectSubtitleTrackVLC', { playbackEngine: 'vlc', trackId });
       } catch (err) {
         logPlayerDiagnostic('selectSubtitleTrackVLCError', { error: err?.message });
       }
@@ -2386,12 +2503,12 @@ export default function PlayerScreen() {
       track = subToApply;
       player.subtitleTrack = track;
       setSelectedSubtitleTrack(track);
-      applyNativeSubtitleFontSize(subtitleSizeRef.current || subtitleSize);
+      reapplyNativeSubtitleSizeWithRetries(subtitleSizeRef.current);
       logPlayerDiagnostic('selectSubtitleTrack', { label: track?.label, language: track?.language, id: track?.id });
     } catch (err) {
       logPlayerDiagnostic('selectSubtitleTrackError', { error: err?.message });
     }
-  }, [player, activeEngineType, vlcPlayer, availableSubtitleTracks, subtitleSize]);
+  }, [player, activeEngineType, vlcPlayer, availableSubtitleTracks]);
 
   const isGestureActiveRef = useRef(false);
 
@@ -2532,6 +2649,8 @@ export default function PlayerScreen() {
       clearTimeout(seekWatchdogRef.current);
       seekWatchdogRef.current = null;
     }
+    upNextSeekOriginRef.current = null;
+    syncUpNextAfterSeekRef.current?.(actualTime);
 
     logPlayerDiagnostic('seekSettled', {
       seekOpId: opId,
@@ -2629,9 +2748,17 @@ export default function PlayerScreen() {
       }
 
       setCurrentTime(safeTime);
+      const seekOrigin = upNextSeekOriginRef.current != null
+        ? upNextSeekOriginRef.current
+        : (currentTimeRef.current || 0);
+      if (upNextSeekOriginRef.current == null) {
+        upNextSeekOriginRef.current = seekOrigin;
+      }
+      currentTimeRef.current = safeTime;
       lastRenderedTimeRef.current = safeTime;
       lastPlaybackTimeRef.current = safeTime;
       lastAdvanceTimeRef.current = Date.now();
+      syncUpNextAfterSeekRef.current?.(safeTime);
 
       // Enter buffering state immediately: shows buffering indicator and hides Play/Pause
       playerStateRef.current = 'BUFFERING';
@@ -2665,6 +2792,9 @@ export default function PlayerScreen() {
   const handleSeekingChange = useCallback((seeking) => {
     const isVlc = activeEngineTypeRef.current === ENGINE_TYPE.VLC && vlcPlayer;
     if (seeking) {
+      if (upNextSeekOriginRef.current == null) {
+        upNextSeekOriginRef.current = currentTimeRef.current || 0;
+      }
       if (!isSeekingRef.current && !isSeekingSettlingRef.current) {
         const wasPlaying = (playbackIntentRef.current === 'PLAYING' && !userPausedRef.current) || (isVlc ? (playerStateRef.current === 'PLAYING') : Boolean(player?.playing));
         wasPlayingBeforeSeekRef.current = wasPlaying;
@@ -2823,17 +2953,29 @@ export default function PlayerScreen() {
     persistPlaybackProgress();
 
     if (backSeriesId && (backTarget === 'series' || type === 'series')) {
-      router.replace({
-        pathname: '/(tabs)/series',
-        params: {
+      const epHighlight =
+        episodeStreamId || streamId || recentEntryId || '';
+      if (epHighlight) {
+        setSeriesReturnHighlight({
           seriesId: backSeriesId,
-          episodeStreamId: episodeStreamId || streamId || recentEntryId || '',
-          ...(backCategoryId ? { categoryId: backCategoryId } : {}),
-          ...(returnTo ? { returnTo } : {}),
-          focusAt: String(Date.now()),
-          autoPlayEpisode: '0',
-        },
-      });
+          episodeStreamId: String(epHighlight),
+        });
+      }
+      if (router.canGoBack?.()) {
+        router.back();
+      } else {
+        router.replace({
+          pathname: '/(tabs)/series',
+          params: {
+            seriesId: backSeriesId,
+            episodeStreamId: epHighlight ? String(epHighlight) : '',
+            focusAt: epHighlight ? String(Date.now()) : '',
+            autoPlayEpisode: '0',
+            ...(backCategoryId ? { categoryId: backCategoryId } : {}),
+            ...(returnTo ? { returnTo } : {}),
+          },
+        });
+      }
       return;
     }
 

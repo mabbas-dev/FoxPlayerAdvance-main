@@ -42,8 +42,9 @@ import {
   logPlayerDiagnostic,
 } from '../utils/playerConfig.js';
 import {
-  applySubtitleFontSizeEverywhere,
+  applySubtitleFontSizeForPlayback,
   applyNativeSubtitleFontSize,
+  reapplyNativeSubtitleSizeWithRetries,
 } from '../utils/subtitleAppearance.js';
 import {
   collectPlaybackMediaTracks,
@@ -204,25 +205,26 @@ export default function EmbeddedVideoPlayer({
   const [selectedAudioTrack, setSelectedAudioTrack]     = useState(null);
   const [availableSubtitleTracks, setAvailableSubtitleTracks] = useState([]);
   const [selectedSubtitleTrack, setSelectedSubtitleTrack]     = useState(null);
-  const [subtitleSize, setSubtitleSize]                 = useState(() => getPlayerSettings()?.subtitleSize || 'normal');
-  const subtitleSizeRef                                 = useRef(getPlayerSettings()?.subtitleSize || 'normal');
+  const [subtitleSize, setSubtitleSize]                 = useState(() => {
+    const { normalizeSubtitleSizeId } = require('../playback/playerSettings.js');
+    return normalizeSubtitleSizeId(getPlayerSettings()?.subtitleSize);
+  });
+  const subtitleSizeRef                                 = useRef(subtitleSize);
   const userSelectedSubtitleRef                         = useRef(false);
 
   const handleSelectSubtitleSize = useCallback((newSize) => {
-    if (!newSize) return;
-    setSubtitleSize(newSize);
-    subtitleSizeRef.current = newSize;
-    savePlayerSettings({ subtitleSize: newSize }).catch(() => {});
-    applySubtitleFontSizeEverywhere({
-      newSize,
+    const { normalizeSubtitleSizeId } = require('../playback/playerSettings.js');
+    const size = normalizeSubtitleSizeId(newSize);
+    if (!size) return;
+    setSubtitleSize(size);
+    subtitleSizeRef.current = size;
+    savePlayerSettings({ subtitleSize: size }).catch(() => {});
+    applySubtitleFontSizeForPlayback({
+      newSize: size,
       activeEngineType: activeEngineTypeRef.current,
       vlcPlayer,
-      streamUri: validation.uri || sanitizedUri || url,
-      isLive: true,
-      title: title || channel?.name || 'Live Stream',
-      resumeTimeMs: 0,
     });
-  }, [vlcPlayer, validation.uri, sanitizedUri, url, title, channel?.name]);
+  }, [vlcPlayer]);
 
   useEffect(() => {
     applyNativeSubtitleFontSize(subtitleSizeRef.current || subtitleSize);
@@ -234,10 +236,15 @@ export default function EmbeddedVideoPlayer({
       if (newSettings?.subtitleSize) {
         setSubtitleSize(newSettings.subtitleSize);
         subtitleSizeRef.current = newSettings.subtitleSize;
+        applySubtitleFontSizeForPlayback({
+          newSize: newSettings.subtitleSize,
+          activeEngineType: activeEngineTypeRef.current,
+          vlcPlayer,
+        });
       }
     });
     return () => unsub?.();
-  }, []);
+  }, [vlcPlayer]);
 
   // Stable mutable refs for race-condition safety
   const playbackIntentRef   = useRef(initialPlayerState === 'PAUSED' ? 'PAUSED' : 'PLAYING');
@@ -629,7 +636,7 @@ export default function EmbeddedVideoPlayer({
       if (typeof vlcPlayer.addOnErrorListener === 'function') {
         const sub = vlcPlayer.addOnErrorListener((err) => {
           if (activeEngineTypeRef.current !== ENGINE_TYPE.VLC || isSwitchingEngineRef.current) return;
-          logPlayerDiagnostic('embeddedVlcPlaybackError', { error: err });
+          logPlayerDiagnostic('embeddedVlcPlaybackError', { playbackEngine: 'vlc', error: err });
           if (engineMode === ENGINE_MODE.AUTO && nativeAttemptsRef.current < 1) {
             switchEngine(ENGINE_TYPE.NATIVE, ENGINE_SWITCH_REASON.AUTO_FALLBACK);
           } else {
@@ -2328,6 +2335,7 @@ export default function EmbeddedVideoPlayer({
         } else {
           setSelectedSubtitleTrack(player?.subtitleTrack || null);
         }
+        reapplyNativeSubtitleSizeWithRetries(subtitleSizeRef.current);
       } catch (_e) {}
 
       if (
@@ -2376,6 +2384,7 @@ export default function EmbeddedVideoPlayer({
     const subSubtitleTracks = player.addListener?.('availableSubtitleTracksChange', ({ availableSubtitleTracks: tracks }) => {
       logPlayerDiagnostic('availableSubtitleTracksChange', { count: tracks?.length || 0 });
       setAvailableSubtitleTracks(normalizeSubtitleTrackList(Array.isArray(tracks) ? tracks : []));
+      reapplyNativeSubtitleSizeWithRetries(subtitleSizeRef.current);
     });
 
     const subSubtitleTrackChange = player.addListener?.('subtitleTrackChange', ({ subtitleTrack: track }) => {
@@ -2383,6 +2392,7 @@ export default function EmbeddedVideoPlayer({
       if (userSelectedSubtitleRef.current) {
         setSelectedSubtitleTrack(track || null);
       }
+      reapplyNativeSubtitleSizeWithRetries(subtitleSizeRef.current);
     });
 
     // Immediate auto-play check: if player is ALREADY in readyToPlay status when listener attaches
@@ -2575,10 +2585,7 @@ export default function EmbeddedVideoPlayer({
           vlcPlayer.selectSubtitleTrack(trackId);
         }
         setSelectedSubtitleTrack(track);
-        if (track) {
-          applyNativeSubtitleFontSize(subtitleSizeRef.current || subtitleSize);
-        }
-        logPlayerDiagnostic('selectSubtitleTrackVLC', { trackId });
+        logPlayerDiagnostic('selectSubtitleTrackVLC', { playbackEngine: 'vlc', trackId });
       } catch (err) {
         logPlayerDiagnostic('selectSubtitleTrackVLCError', { error: err?.message });
       }
@@ -2622,12 +2629,12 @@ export default function EmbeddedVideoPlayer({
       track = subToApply;
       player.subtitleTrack = track;
       setSelectedSubtitleTrack(track);
-      applyNativeSubtitleFontSize(subtitleSizeRef.current || subtitleSize);
+      reapplyNativeSubtitleSizeWithRetries(subtitleSizeRef.current);
       logPlayerDiagnostic('selectSubtitleTrack', { label: track?.label, language: track?.language, id: track?.id });
     } catch (err) {
       logPlayerDiagnostic('selectSubtitleTrackError', { error: err?.message });
     }
-  }, [player, activeEngineType, vlcPlayer, availableSubtitleTracks, subtitleSize]);
+  }, [player, activeEngineType, vlcPlayer, availableSubtitleTracks]);
 
   const isGestureActiveRef = useRef(false);
   useEffect(() => {

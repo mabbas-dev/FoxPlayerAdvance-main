@@ -82,6 +82,7 @@
       "expo-screen-orientation",
       "./plugins/withExpoScreenOrientationIosFix",
       "./plugins/withFoxSubtitleFontSize",
+      "./plugins/withFoxVlcSubtitleFontSize",
       [
         "expo-navigation-bar",
         {
