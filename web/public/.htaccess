@@ -1,0 +1,8 @@
+RewriteEngine On
+
+# Device portal (pretty URLs)
+RewriteRule ^manage/([A-Za-z0-9_-]+)/?$ portal/index.html [L,QSA]
+RewriteRule ^portal/([A-Za-z0-9_-]+)/?$ portal/index.html [L,QSA]
+RewriteRule ^upload/?$ portal/index.html [L,QSA]
+
+DirectoryIndex index.html

@@ -1,0 +1,1427 @@
+# FOX PLAYER — FULL PRODUCTION IPTV PLAYER
+
+You are a senior full-stack engineer and UI/UX engineer. Build a complete, production-quality IPTV application called **FOX PLAYER**.
+
+Do not create a simple demo, mockup, prototype, or AI-looking interface. Build the project as if it will be released to real users.
+
+Do not use emojis anywhere in the application UI, buttons, notifications, error messages, documentation, or generated content.
+
+The application must have a polished, premium, modern TV/media-player experience with smooth animations, proper spacing, typography, responsive layouts, and professional error handling.
+
+---
+
+# 1. CORE CONCEPT
+
+FOX PLAYER consists of two parts:
+
+1. FOX PLAYER application
+2. FOX PLAYER web pairing/configuration website
+
+The app is an IPTV player.
+
+The website is used to connect/configure an individual FOX PLAYER device by entering either:
+
+* M3U playlist URL/details
+* Xtream Codes API credentials
+
+The app displays a QR code containing a device-specific URL.
+
+Example:
+
+http://localhost:3000/add-device?device-id=XXXXXXXX
+
+The user scans this QR code with their phone/computer, enters their IPTV details on the website, and saves them.
+
+The FOX PLAYER app can then press "Reload Playlist" and retrieve the configuration associated with that device ID.
+
+---
+
+# 2. IMPORTANT DEVELOPMENT REQUIREMENTS
+
+Build everything completely.
+
+Do not leave:
+
+* TODO comments
+* fake API calls
+* placeholder functions
+* mock database logic
+* unfinished screens
+* dummy buttons
+* console-only error handling
+* hardcoded IPTV content
+* fake loading states
+* incomplete navigation
+* missing error states
+
+Every feature must actually work.
+
+If something fails, display a proper user-friendly error state and log useful technical information for debugging.
+
+The application should remain stable even when:
+
+* internet is unavailable
+* IPTV server is unavailable
+* playlist is invalid
+* Xtream credentials are invalid
+* API returns malformed data
+* database is unavailable
+* QR pairing URL cannot be reached
+* device has no configuration
+* playlist contains thousands of channels
+* images fail to load
+* video playback fails
+* user enters invalid data
+* user reloads the application
+* user reinstalls the application
+
+---
+
+# 3. EXISTING UI ASSETS
+
+There is an existing folder:
+
+ui-ux/
+
+It contains the application's:
+
+* logo
+* design assets
+* images
+* UI resources
+
+Inspect this folder first.
+
+Move the required assets into the proper production design/assets directory.
+
+For example:
+
+design/
+logo/
+images/
+icons/
+backgrounds/
+fonts/
+
+Use the existing assets wherever appropriate.
+
+After successfully moving the required assets, remove the old `ui-ux` folder.
+
+Do not duplicate assets unnecessarily.
+
+Make sure all imports/references are updated after moving the files.
+
+---
+
+# 4. PROJECT STRUCTURE
+
+Create a clean professional project structure.
+
+Use a structure similar to:
+
+fox-player/
+│
+├── app/
+│   ├── screens/
+│   ├── components/
+│   ├── navigation/
+│   ├── services/
+│   ├── models/
+│   ├── storage/
+│   ├── player/
+│   ├── state/
+│   └── utils/
+│
+├── design/
+│   ├── logo/
+│   ├── images/
+│   ├── icons/
+│   └── fonts/
+│
+├── server/
+│   ├── routes/
+│   ├── controllers/
+│   ├── services/
+│   ├── database/
+│   ├── middleware/
+│   ├── models/
+│   └── utils/
+│
+├── web/
+│   ├── pages/
+│   ├── components/
+│   ├── styles/
+│   └── services/
+│
+├── database/
+│   ├── migrations/
+│   └── schema/
+│
+├── config/
+├── tests/
+├── docs/
+└── README.md
+
+Adapt this structure to the actual framework being used, but keep a clean separation between:
+
+* application
+* backend
+* website
+* database
+* assets
+* configuration
+* tests
+
+Do not put everything into one or two huge files.
+
+---
+
+# 5. DEVICE ID
+
+When FOX PLAYER starts for the first time, generate a unique permanent device ID.
+
+The device ID should be:
+
+* exactly 8 alphanumeric characters
+* uppercase
+* easy to display
+* unique enough for pairing
+* generated securely
+* stored in persistent device storage
+
+Example:
+
+A7K92PX4
+
+Do NOT use a normal random ID that changes whenever the application starts.
+
+The ID must remain the same across normal app restarts.
+
+Most importantly:
+
+## REINSTALL REQUIREMENT
+
+If technically possible on the target platform, the device ID must survive application uninstall/reinstall.
+
+Do not simply store the ID in ordinary application preferences if that storage is destroyed during uninstall.
+
+Use the strongest platform-appropriate persistent identifier/storage mechanism available.
+
+If the operating system makes a true uninstall-surviving identifier impossible, implement the most reliable platform-supported approach and document the limitation rather than pretending it is guaranteed.
+
+Never use a MAC address directly.
+
+Do not expose sensitive hardware identifiers.
+
+The displayed 8-character device ID is the pairing identifier.
+
+---
+
+# 6. FIRST SCREEN / PAIRING SCREEN
+
+When FOX PLAYER launches and no IPTV configuration exists, show a beautiful pairing screen.
+
+The screen should contain:
+
+FOX PLAYER logo
+
+A short instruction:
+
+"Scan to connect this device"
+
+Then:
+
+## QR CODE
+
+Generate a QR code containing:
+
+http://localhost:3000/add-device?device-id=XXXXXXXX
+
+The actual URL must come from configuration/environment variables rather than being hardcoded.
+
+Example:
+
+PAIRING_BASE_URL=http://localhost:3000
+
+The final QR URL becomes:
+
+PAIRING_BASE_URL/add-device?device-id=A7K92PX4
+
+Below the QR code show:
+
+Device ID
+
+A7K92PX4
+
+Also show:
+
+"Use your phone or computer to connect this player."
+
+Provide:
+
+Reload Playlist
+
+button.
+
+The screen should look like a premium streaming-device activation screen, not a generic form.
+
+---
+
+# 7. PAIRING WEBSITE
+
+Create a web page:
+
+/add-device?device-id=XXXXXXXX
+
+When opened, it should:
+
+1. Read the device ID from the URL.
+2. Validate the device ID.
+3. Check whether the device exists.
+4. Create/register the device if appropriate.
+5. Display the IPTV configuration form.
+
+Page title:
+
+Connect FOX PLAYER
+
+Display:
+
+Device ID: XXXXXXXX
+
+Then provide two configuration methods:
+
+## M3U
+
+Fields:
+
+Playlist URL
+
+Optional playlist name.
+
+## XTREAM CODES
+
+Fields:
+
+Server URL
+
+Username
+
+Password
+
+Provide a clear toggle/tab:
+
+M3U
+XTREAM CODES
+
+Do not show both forms simultaneously unless appropriate.
+
+---
+
+# 8. WEBSITE VALIDATION
+
+Validate everything before saving.
+
+Examples:
+
+Invalid device ID:
+
+"Invalid device ID."
+
+Missing M3U URL:
+
+"Please enter a playlist URL."
+
+Invalid URL:
+
+"Please enter a valid playlist URL."
+
+Missing Xtream server:
+
+"Please enter your Xtream server URL."
+
+Missing username:
+
+"Please enter your username."
+
+Missing password:
+
+"Please enter your password."
+
+Do not expose raw database errors to users.
+
+---
+
+# 9. DATABASE
+
+Create a proper database schema.
+
+At minimum create:
+
+devices
+
+playlist_configs
+
+playlist_sync_logs
+
+sessions or equivalent if authentication/session tracking is needed.
+
+Example device structure:
+
+devices
+
+* id
+* device_id
+* created_at
+* updated_at
+* last_seen_at
+* status
+
+playlist_configs
+
+* id
+* device_id
+* type
+* playlist_url
+* server_url
+* username
+* password
+* created_at
+* updated_at
+* enabled
+
+Never store passwords unnecessarily in plaintext.
+
+If credentials must be stored for the IPTV service, protect them appropriately using encryption/secrets management suitable for the deployment environment.
+
+Never expose IPTV passwords through public API responses.
+
+---
+
+# 10. SAVE CONFIGURATION
+
+When the user submits the website form:
+
+Validate the request.
+
+Validate the device.
+
+Validate the IPTV configuration.
+
+Save/update the configuration.
+
+Return a clean success page.
+
+Example:
+
+FOX PLAYER CONNECTED
+
+Your IPTV configuration has been saved successfully.
+
+Return to FOX PLAYER and select "Reload Playlist".
+
+Do not simply show a browser alert.
+
+Use a professional success screen.
+
+---
+
+# 11. DEVICE API
+
+Create a secure API endpoint allowing the FOX PLAYER app to retrieve configuration using its device ID.
+
+Example:
+
+GET /api/device/{deviceId}/playlist
+
+Do not blindly return database records.
+
+Validate:
+
+* device ID format
+* device existence
+* configuration existence
+* enabled status
+
+Return structured JSON.
+
+Example successful response:
+
+{
+"success": true,
+"configured": true,
+"type": "xtream",
+"configuration": {
+...
+}
+}
+
+Never return sensitive information that the app does not need.
+
+Implement proper HTTP status codes.
+
+---
+
+# 12. RELOAD PLAYLIST
+
+The app must have a clearly visible:
+
+Reload Playlist
+
+action.
+
+When pressed:
+
+1. Show loading animation.
+2. Contact backend.
+3. Retrieve current device configuration.
+4. Validate response.
+5. Connect to IPTV provider.
+6. Retrieve playlist/categories.
+7. Parse data.
+8. Cache the data locally.
+9. Update the UI.
+10. Show success/failure state.
+
+Do not freeze the UI.
+
+---
+
+# 13. BEAUTIFUL LOADING EXPERIENCE
+
+When loading IPTV data, create a premium animated loading screen.
+
+Show FOX PLAYER branding.
+
+Animate text/states such as:
+
+LIVE
+
+MOVIES
+
+SERIES
+
+Do not simply use a spinning circle.
+
+Use smooth animations and transitions.
+
+Possible sequence:
+
+"Connecting to FOX PLAYER"
+
+"Loading LIVE channels"
+
+"Loading MOVIES"
+
+"Loading SERIES"
+
+"Preparing your library"
+
+"Ready"
+
+The animation should feel like a real commercial streaming application.
+
+Do not use emojis.
+
+---
+
+# 14. MAIN HOME SCREEN
+
+After successful loading, display the main FOX PLAYER dashboard.
+
+The main screen should have three large premium sections:
+
+LIVE
+
+MOVIES
+
+SERIES
+
+Each should be visually distinct using:
+
+* artwork
+* gradients
+* glass/dark UI where appropriate
+* subtle animation
+* hover/focus effects
+* smooth transitions
+
+Do not make it look like a basic CRUD website.
+
+The main navigation should feel similar to a modern smart-TV streaming application.
+
+---
+
+# 15. LIVE TV
+
+LIVE should display IPTV live channels.
+
+Features:
+
+* categories
+* channel list
+* channel logo
+* channel name
+* favorite channels
+* search
+* recently watched
+* playback
+* loading states
+* empty states
+* error states
+
+When a channel is selected, open the video player.
+
+---
+
+# 16. MOVIES
+
+MOVIES should display movie content from the IPTV source.
+
+Features:
+
+* categories
+* posters
+* title
+* year where available
+* search
+* favorites
+* recently watched
+* movie details
+* playback
+
+Use lazy loading where appropriate.
+
+Do not load thousands of images simultaneously.
+
+---
+
+# 17. SERIES
+
+SERIES should display series.
+
+Features:
+
+* categories
+* posters
+* search
+* series details
+* seasons
+* episodes
+* playback
+* favorites
+* recently watched
+
+The navigation should be intuitive.
+
+Example:
+
+SERIES
+→ Series
+→ Season
+→ Episodes
+→ Player
+
+---
+
+# 18. VIDEO PLAYER
+
+Implement a professional video player.
+
+Use the platform's supported modern video engine.
+
+Prefer:
+
+EXO PLAYER
+
+where the target platform supports it.
+
+The player should support appropriate streaming formats from the IPTV source.
+
+Include:
+
+* play/pause
+* seek
+* volume
+* fullscreen
+* playback progress
+* buffering indicator
+* subtitle support where available
+* audio track selection where available
+* video quality where supported
+* retry
+* error handling
+* back navigation
+
+Player errors should be understandable.
+
+Example:
+
+"Unable to play this stream."
+
+Then provide:
+
+Retry
+
+Do not show raw exceptions to the user.
+
+---
+
+# 19. SETTINGS
+
+Create a professional settings screen.
+
+Include:
+
+## Device
+
+Device ID
+
+Connection status
+
+Last playlist update
+
+## IPTV
+
+Reload Playlist
+
+Current source type
+
+Playlist status
+
+## Playback
+
+Video Engine
+
+EXO Player
+
+Allow the architecture to support additional engines later.
+
+## Security
+
+Adult Content PIN
+
+Enable/disable adult content protection.
+
+## About
+
+FOX PLAYER version
+
+App information
+
+---
+
+# 20. ADULT CONTENT PIN
+
+Implement an Adult Content PIN system.
+
+The user can create a PIN.
+
+Adult categories/content must require the PIN.
+
+Do not store the PIN as plaintext.
+
+Store a secure hash.
+
+Provide:
+
+Set PIN
+
+Change PIN
+
+Disable PIN
+
+Verify PIN
+
+Forgot/reset flow appropriate to the platform.
+
+Do not hardcode a universal PIN.
+
+---
+
+# 21. ADULT CONTENT
+
+Detect adult categories/content from IPTV category metadata where possible.
+
+Do not rely on only one naming pattern.
+
+Use configurable detection logic.
+
+Examples may include category names containing adult-related terms.
+
+Keep adult categories hidden by default when parental protection is enabled.
+
+Do not display adult content in search results when locked.
+
+---
+
+# 22. LOCAL CACHE
+
+The app should cache appropriate IPTV data locally.
+
+Cache:
+
+* categories
+* channel metadata
+* movie metadata
+* series metadata
+* favorites
+* recently watched
+
+Do not cache sensitive IPTV credentials insecurely.
+
+When the user selects Reload Playlist, refresh the remote data while keeping the UI responsive.
+
+Handle stale cache gracefully.
+
+---
+
+# 23. OFFLINE / NETWORK ERROR HANDLING
+
+If internet is unavailable:
+
+Display:
+
+"No internet connection."
+
+Provide:
+
+Retry
+
+If the IPTV server is unavailable:
+
+"Unable to connect to your IPTV service."
+
+Provide:
+
+Retry
+Reload Playlist
+
+If no configuration exists:
+
+"No IPTV playlist connected."
+
+Provide:
+
+Scan QR Code
+
+If the playlist is invalid:
+
+"Unable to read this playlist."
+
+Provide useful next steps.
+
+Never crash the application.
+
+---
+
+# 24. EMPTY STATES
+
+Every major screen needs a professional empty state.
+
+Examples:
+
+No channels found.
+
+No movies found.
+
+No series found.
+
+No favorites yet.
+
+No recently watched content.
+
+No IPTV configuration.
+
+No internet connection.
+
+Do not leave blank screens.
+
+---
+
+# 25. API ERROR HANDLING
+
+Create a consistent API response format.
+
+Example:
+
+{
+"success": false,
+"error": {
+"code": "DEVICE_NOT_FOUND",
+"message": "Device was not found."
+}
+}
+
+Use meaningful error codes.
+
+Examples:
+
+DEVICE_NOT_FOUND
+
+INVALID_DEVICE_ID
+
+NO_CONFIGURATION
+
+INVALID_CONFIGURATION
+
+NETWORK_ERROR
+
+IPTV_AUTH_FAILED
+
+PLAYLIST_PARSE_FAILED
+
+SERVER_ERROR
+
+Do not expose stack traces to users.
+
+Log technical details server-side.
+
+---
+
+# 26. SECURITY
+
+Treat this as a real production application.
+
+Implement:
+
+* input validation
+* output escaping
+* SQL injection protection
+* prepared statements
+* API authentication/authorization where appropriate
+* rate limiting for public pairing/API endpoints
+* CORS configuration
+* secure headers
+* CSRF protection for web forms where applicable
+* encrypted sensitive configuration
+* secure password/credential handling
+* server-side validation
+* device ID validation
+* request logging
+* error logging
+
+Never trust data coming from the app or browser.
+
+---
+
+# 27. QR CODE SECURITY
+
+Do not allow arbitrary device IDs.
+
+Only accept the defined format.
+
+Example:
+
+^[A-Z0-9]{8}$
+
+Do not put IPTV credentials into the QR code.
+
+The QR code should contain only the pairing URL/device identifier.
+
+---
+
+# 28. RESPONSIVE WEBSITE
+
+The pairing website must work properly on:
+
+* mobile phones
+* tablets
+* laptops
+* desktop computers
+
+The page opened after scanning the QR code should be especially optimized for mobile.
+
+Make the form easy to use with touch.
+
+---
+
+# 29. UI/UX STYLE
+
+The visual design should feel like a premium streaming platform.
+
+Use:
+
+* dark cinematic interface
+* clean typography
+* strong visual hierarchy
+* large artwork
+* subtle gradients
+* smooth transitions
+* soft shadows
+* rounded components where appropriate
+* modern cards
+* elegant loading animations
+
+Avoid:
+
+* generic Bootstrap-looking pages
+* excessive borders
+* random colors
+* huge text
+* clutter
+* unnecessary controls
+* emojis
+* "AI generated" visual patterns
+
+The application should look intentionally designed by a senior product designer.
+
+---
+
+# 30. ANIMATIONS
+
+Use animations carefully.
+
+Include:
+
+* app startup animation
+* logo animation
+* screen transitions
+* card hover/focus animations
+* loading animations
+* skeleton loading
+* modal transitions
+* player transitions
+* success animation
+* error animation
+
+Animations must not make the application slow.
+
+Respect reduced-motion settings where supported.
+
+---
+
+# 31. APP STARTUP FLOW
+
+Startup should work approximately like:
+
+FOX PLAYER logo animation
+
+↓
+
+Check device ID
+
+↓
+
+Check local configuration/cache
+
+↓
+
+Check network
+
+↓
+
+If configured:
+
+Load cached content
+
+↓
+
+Refresh/update when appropriate
+
+↓
+
+Home screen
+
+If not configured:
+
+Pairing screen
+
+↓
+
+QR CODE
+
+↓
+
+DEVICE ID
+
+↓
+
+"Scan to connect this device"
+
+---
+
+# 32. DEVICE REGISTRATION
+
+The app should register the device with the backend when appropriate.
+
+Example:
+
+POST /api/devices/register
+
+Payload:
+
+{
+"device_id": "A7K92PX4"
+}
+
+The backend should create the device if it does not exist.
+
+If it already exists, update last_seen_at.
+
+Do not create duplicate devices.
+
+---
+
+# 33. CONFIGURATION STATUS
+
+The app should be able to determine:
+
+UNREGISTERED
+
+REGISTERED
+
+NOT_CONFIGURED
+
+CONFIGURED
+
+SYNCING
+
+READY
+
+ERROR
+
+Use these states consistently.
+
+---
+
+# 34. WEBSITE DEVICE STATUS
+
+After a device is paired, the website should show useful status information where appropriate.
+
+Example:
+
+Device ID
+
+A7K92PX4
+
+Status:
+
+Connected
+
+Playlist:
+
+Xtream Codes
+
+Last updated:
+
+date/time
+
+Do not expose IPTV credentials.
+
+---
+
+# 35. DATABASE DESIGN
+
+Create proper indexes.
+
+At minimum:
+
+unique index on device_id
+
+indexes on:
+
+device_id
+
+created_at
+
+updated_at
+
+status
+
+Design the schema so it can scale beyond a few devices.
+
+---
+
+# 36. ENVIRONMENT CONFIGURATION
+
+Do not hardcode:
+
+database passwords
+
+API secrets
+
+production URLs
+
+encryption keys
+
+private credentials
+
+Create an environment configuration.
+
+Example:
+
+APP_URL=
+
+PAIRING_BASE_URL=
+
+DATABASE_URL=
+
+DATABASE_HOST=
+
+DATABASE_NAME=
+
+DATABASE_USER=
+
+DATABASE_PASSWORD=
+
+ENCRYPTION_KEY=
+
+API_SECRET=
+
+Make sure `.env` is excluded from Git.
+
+Create `.env.example`.
+
+---
+
+# 37. DEVELOPMENT ENVIRONMENT
+
+The project must run easily in development.
+
+Provide:
+
+installation instructions
+
+database setup
+
+environment configuration
+
+development commands
+
+production build commands
+
+server startup commands
+
+migration commands
+
+test commands
+
+README.md must contain complete setup instructions.
+
+---
+
+# 38. TESTING
+
+Add meaningful tests.
+
+Test:
+
+device ID generation
+
+device registration
+
+duplicate device handling
+
+QR URL generation
+
+invalid device IDs
+
+M3U configuration
+
+Xtream configuration
+
+database operations
+
+API responses
+
+authentication/authorization
+
+adult PIN
+
+playlist parsing
+
+error handling
+
+---
+
+# 39. LOGGING
+
+Implement structured logging.
+
+Log:
+
+API errors
+
+playlist synchronization failures
+
+authentication failures
+
+device registration
+
+unexpected exceptions
+
+Do not log:
+
+IPTV passwords
+
+sensitive credentials
+
+private secrets
+
+PIN values
+
+---
+
+# 40. PERFORMANCE
+
+Optimize for real IPTV datasets.
+
+The application must remain responsive with:
+
+* thousands of channels
+* thousands of movies
+* thousands of series
+* large playlists
+
+Use:
+
+pagination where appropriate
+
+lazy loading
+
+virtualized lists where appropriate
+
+image caching
+
+background synchronization
+
+efficient database queries
+
+local caching
+
+Do not block the main UI thread.
+
+---
+
+# 41. ACCESSIBILITY
+
+Use:
+
+proper contrast
+
+keyboard navigation on web
+
+focus states
+
+readable font sizes
+
+accessible controls
+
+screen-reader-friendly labels where applicable
+
+Do not rely only on color to communicate status.
+
+---
+
+# 42. FINAL QUALITY CHECK
+
+Before declaring the project complete, inspect the entire codebase.
+
+Verify:
+
+* no broken imports
+* no unused critical files
+* no TODO placeholders
+* no fake APIs
+* no mock data in production paths
+* no hardcoded credentials
+* no exposed secrets
+* no console-only error handling
+* no missing database migrations
+* no broken routes
+* no broken assets
+* no missing environment variables
+* no duplicate device creation
+* no crashes when IPTV configuration is missing
+* no crashes when internet is unavailable
+* no crashes when IPTV credentials are invalid
+* no crashes when playlist parsing fails
+
+Run the complete application.
+
+Test the entire flow:
+
+1. Launch FOX PLAYER.
+2. Generate device ID.
+3. Display QR code.
+4. Scan/open pairing URL.
+5. Enter M3U.
+6. Save configuration.
+7. Return to app.
+8. Press Reload Playlist.
+9. Retrieve configuration.
+10. Parse IPTV data.
+11. Show loading animation.
+12. Show LIVE / MOVIES / SERIES.
+13. Open LIVE.
+14. Play a channel.
+15. Open MOVIES.
+16. Open SERIES.
+17. Open settings.
+18. Configure Adult PIN.
+19. Reload playlist.
+20. Test invalid credentials.
+21. Test network failure.
+22. Test missing configuration.
+23. Test application restart.
+24. Verify device ID remains unchanged.
+
+Fix every issue discovered during testing.
+
+---
+
+# 43. IMPORTANT IMPLEMENTATION PRINCIPLE
+
+Do not stop after creating the UI.
+
+The goal is a fully connected system:
+
+FOX PLAYER APP
+
+↕ HTTPS/API
+
+FOX PLAYER BACKEND
+
+↕
+
+DATABASE
+
+↕
+
+PAIRING WEBSITE
+
+The complete pairing workflow must actually work.
+
+---
+
+# 44. FINAL DELIVERABLE
+
+At the end, provide:
+
+1. Complete source code.
+2. Complete database schema/migrations.
+3. Complete website.
+4. Complete FOX PLAYER application.
+5. API implementation.
+6. IPTV M3U support.
+7. Xtream Codes support.
+8. QR pairing system.
+9. Persistent device identity.
+10. Video player integration.
+11. Adult PIN.
+12. Settings.
+13. Playlist reload.
+14. Loading animations.
+15. Error handling.
+16. Logging.
+17. Security implementation.
+18. Tests.
+19. README.
+20. `.env.example`.
+
+Do not tell me that something is "left for later."
+
+If a technical decision is required, choose a sensible production-ready implementation and document the decision.
+
+Build the project completely and professionally.

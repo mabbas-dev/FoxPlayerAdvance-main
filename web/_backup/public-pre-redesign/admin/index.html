@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>FOX PLAYER — Control Center</title>
+  <link rel="stylesheet" href="/assets/fox-theme.css" />
+  <link rel="stylesheet" href="/assets/fox-admin.css" />
+</head>
+<body>
+  <div id="fox-login" class="fox-login-wrap">
+    <div class="card fox-login-card">
+      <div class="brand-lockup" style="margin-bottom:24px">
+        <div class="brand-mark">FX</div>
+        <div>
+          <div class="brand-title">FOX PLAYER</div>
+          <div class="brand-sub">Operator control center</div>
+        </div>
+      </div>
+      <form id="fox-login-form">
+        <label for="fox-admin-password">Admin secret</label>
+        <input id="fox-admin-password" type="password" autocomplete="current-password" required />
+        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:4px">Sign in</button>
+      </form>
+      <p id="fox-login-error" class="alert alert-error hidden" style="margin-bottom:0;margin-top:14px"></p>
+    </div>
+  </div>
+
+  <div id="fox-app" class="fox-app hidden">
+    <aside class="fox-sidebar" aria-label="Main navigation">
+      <div class="fox-sidebar__brand">
+        <div class="brand-mark">FX</div>
+        <div>
+          <div class="brand-title">Control Center</div>
+          <div class="brand-sub">FOX PLAYER</div>
+        </div>
+      </div>
+      <nav class="fox-sidebar__nav" id="fox-nav"></nav>
+      <div class="fox-sidebar__foot">
+        <a href="/reseller/">Reseller portal</a>
+        <a href="/">Public website</a>
+      </div>
+    </aside>
+    <div class="fox-workspace">
+      <header class="fox-header">
+        <div>
+          <h1 class="fox-header__title" id="fox-page-title">Overview</h1>
+          <p class="fox-header__sub" id="fox-page-sub">Platform summary</p>
+        </div>
+        <div class="fox-header__actions">
+          <button type="button" class="btn btn-ghost" id="fox-logout">Sign out</button>
+        </div>
+      </header>
+      <main class="fox-main" id="fox-content" role="main"></main>
+    </div>
+  </div>
+
+  <div id="fox-modal-root"></div>
+  <div id="fox-toast-root" class="fox-toast-stack" aria-live="polite"></div>
+
+  <script type="module" src="/assets/admin/main.js?v=20260327"></script>
+</body>
+</html>

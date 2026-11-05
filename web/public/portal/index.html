@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Upload playlist — FOX PLAYER</title>
+  <link rel="stylesheet" href="/css/portal.css" />
+  <link rel="icon" href="/img/fox-logo-icon.png" type="image/png" />
+</head>
+<body class="portal-page" data-fox-page="portal">
+  <header class="portal-header">
+    <div class="portal-header__inner">
+      <a class="portal-header__brand" href="/">
+        <img src="/img/fox-logo-icon.png" width="44" height="44" alt="" />
+        <div>
+          <div class="brand-title">FOX PLAYER</div>
+          <div class="brand-sub">Upload playlist</div>
+        </div>
+      </a>
+      <a class="btn btn-ghost" href="/">Home</a>
+    </div>
+  </header>
+
+  <div class="portal-shell portal-shell--upload">
+    <p class="portal-intro" id="portal-mode-hint">
+      Enter your <strong>Device ID</strong> from the app (Setup). We check that FOX PLAYER is installed for that ID and that ID lock is off, then you can add a playlist.
+      To <strong>edit or delete</strong> playlists, open the link from the QR code in the app — that includes your secure token.
+    </p>
+
+    <div id="entry-panel" class="card portal-connect">
+      <h2 style="margin-top:0">Your Device ID</h2>
+      <form id="portal-entry-form">
+        <label for="entry-device-id">Device ID</label>
+        <input id="entry-device-id" placeholder="Shown in FOX PLAYER → Setup" autocomplete="off" autocapitalize="characters" required />
+        <button class="btn btn-primary" type="submit" style="width:100%">Verify device</button>
+      </form>
+      <p id="entry-err" class="alert alert-error hidden" style="margin-bottom:0;margin-top:12px"></p>
+    </div>
+
+    <div class="card hidden" id="device-card">
+      <div class="portal-device-row">
+        <div>
+          <label>Device ID</label>
+          <p id="device-badge" class="device-id-display">—</p>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" id="change-device-btn">Change</button>
+      </div>
+      <div id="device-meta" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px"></div>
+      <div id="pair-status" class="alert alert-info hidden" style="margin-top:14px;margin-bottom:0"></div>
+    </div>
+
+    <div id="lock-banner" class="alert alert-error hidden">
+      Device ID is <strong>locked</strong> in the app. Turn off ID lock in FOX PLAYER Settings, then try again.
+    </div>
+
+    <div id="main-panel" class="portal-upload-section">
+      <div class="card portal-upload-card" id="editor-card">
+        <h2 id="form-title" style="margin-top:0">Add playlist</h2>
+        <p class="lead" id="form-sub">Xtream / Trex or M3U from your licensed provider.</p>
+        <p id="upload-lock-hint" class="alert alert-info">Enter your Device ID above and tap Verify device to enable this form.</p>
+        <div class="tabs">
+          <button type="button" class="tab active" data-tab="xtream">Xtream / Trex</button>
+          <button type="button" class="tab" data-tab="m3u">M3U URL</button>
+        </div>
+        <form id="playlist-form">
+          <input type="hidden" id="edit-dp-id" value="" />
+          <label for="pl-name">Playlist name</label>
+          <input id="pl-name" placeholder="Home IPTV" autocomplete="off" />
+          <div id="panel-xtream">
+            <label for="pl-server">Server URL</label>
+            <input id="pl-server" placeholder="http://provider.com:8080" autocomplete="off" />
+            <label for="pl-user">Username</label>
+            <input id="pl-user" autocomplete="username" />
+            <label for="pl-pass">Password</label>
+            <input id="pl-pass" type="password" autocomplete="current-password" placeholder="Required for new uploads" />
+          </div>
+          <div id="panel-m3u" class="hidden">
+            <label for="pl-m3u">M3U / HLS URL</label>
+            <input id="pl-m3u" placeholder="https://…" autocomplete="off" />
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+            <button class="btn btn-primary" type="submit" id="submit-playlist">Save playlist</button>
+            <button class="btn btn-ghost hidden" type="button" id="cancel-edit-btn">Cancel edit</button>
+          </div>
+        </form>
+        <div id="result" class="alert hidden" style="margin-top:14px;margin-bottom:0"></div>
+      </div>
+
+      <div class="card hidden" id="playlists-card">
+        <h2 style="margin-top:0">Playlists on this device</h2>
+        <p id="manage-hint" class="lead hidden">Open the QR link from the app to edit or remove playlists here.</p>
+        <div id="playlist-list"></div>
+        <p id="playlist-empty" class="lead hidden" style="margin-bottom:0">No playlists yet.</p>
+      </div>
+    </div>
+
+    <p class="footer-note">After saving, tap <strong>Reload playlist</strong> in the app. · <a href="/privacy.html">Privacy</a></p>
+  </div>
+
+  <script type="module" src="/js/portal/portal.js?v=20260404"></script>
+</body>
+</html>

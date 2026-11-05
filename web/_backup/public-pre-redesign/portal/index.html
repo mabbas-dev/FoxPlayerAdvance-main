@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Upload playlist — FOX PLAYER</title>
+  <link rel="stylesheet" href="/assets/fox-theme.css" />
+</head>
+<body data-fox-page="portal">
+  <div class="shell" style="max-width:720px">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <div class="brand-mark">FX</div>
+        <div>
+          <div class="brand-title">FOX PLAYER</div>
+          <div class="brand-sub">Upload your playlist</div>
+        </div>
+      </div>
+      <a class="btn btn-ghost" href="/">Home</a>
+    </header>
+
+    <div id="entry-panel" class="card">
+      <h2 style="margin-top:0">Upload from the website</h2>
+      <p class="lead" style="margin-bottom:16px">
+        In FOX PLAYER open <strong>Setup</strong>, note your <strong>Device ID</strong>, and scan the QR code (or copy the full link).
+        Paste the details below to open your secure upload page.
+      </p>
+      <form id="portal-entry-form">
+        <label for="entry-device-id">Device ID</label>
+        <input id="entry-device-id" placeholder="e.g. ABC123XYZ" autocomplete="off" autocapitalize="characters" required />
+        <label for="entry-token">Pairing token <span style="color:var(--text-muted);font-weight:400">(from QR link — required to upload)</span></label>
+        <input id="entry-token" placeholder="Long code from ?token=… in the app link" autocomplete="off" required />
+        <button class="btn btn-primary" type="submit">Continue to upload</button>
+      </form>
+      <p class="footer-note" style="margin-top:14px;margin-bottom:0">
+        Tip: the app opens a link like <code>/portal/YOUR_ID?token=…</code> — you can paste that URL in the browser instead.
+      </p>
+    </div>
+
+    <div class="card hidden" id="device-card">
+      <label>Your device ID</label>
+      <p id="device-badge" style="margin:0;font-family:ui-monospace,Menlo,monospace;font-size:1.35rem;font-weight:700;color:var(--brand)">—</p>
+      <div id="device-meta" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px"></div>
+      <div id="pair-status" class="alert alert-info hidden" style="margin-top:14px;margin-bottom:0"></div>
+    </div>
+
+    <div id="lock-banner" class="alert alert-error hidden">
+      Device ID is <strong>locked</strong> in the app. Open FOX PLAYER → Settings and turn off ID lock to upload or edit playlists here.
+    </div>
+
+    <div id="main-panel" class="hidden">
+      <div class="card">
+        <h2>Your playlists</h2>
+        <p class="lead">View, edit, or remove playlists linked to this device.</p>
+        <div id="playlist-list"></div>
+        <p id="playlist-empty" class="lead hidden" style="margin-bottom:0">No playlists yet — upload one below.</p>
+      </div>
+
+      <div class="card" id="editor-card">
+        <h2 id="form-title">Upload playlist</h2>
+        <p class="lead" id="form-sub">Add your licensed Xtream or M3U playlist. FOX PLAYER is a media player only.</p>
+        <div class="tabs">
+          <button type="button" class="tab active" data-tab="xtream">Xtream / Trex</button>
+          <button type="button" class="tab" data-tab="m3u">M3U URL</button>
+        </div>
+        <form id="playlist-form">
+          <input type="hidden" id="edit-dp-id" value="" />
+          <label for="pl-name">Playlist name</label>
+          <input id="pl-name" placeholder="Home IPTV" autocomplete="off" />
+          <div id="panel-xtream">
+            <label for="pl-server">Server URL</label>
+            <input id="pl-server" placeholder="http://provider.com:8080" autocomplete="off" />
+            <label for="pl-user">Username</label>
+            <input id="pl-user" autocomplete="username" />
+            <label for="pl-pass">Password</label>
+            <input id="pl-pass" type="password" autocomplete="current-password" placeholder="Required for new uploads" />
+          </div>
+          <div id="panel-m3u" class="hidden">
+            <label for="pl-m3u">M3U / HLS URL</label>
+            <input id="pl-m3u" placeholder="https://…" autocomplete="off" />
+          </div>
+          <div style="display:flex;flex-wrap:gap:8px;margin-top:4px">
+            <button class="btn btn-primary" type="submit" id="submit-playlist">Upload playlist</button>
+            <button class="btn btn-ghost hidden" type="button" id="cancel-edit-btn">Cancel edit</button>
+          </div>
+        </form>
+        <div id="result" class="alert hidden" style="margin-top:14px;margin-bottom:0"></div>
+      </div>
+    </div>
+
+    <p class="footer-note">After uploading, open the app and tap <strong>Reload playlist</strong>. <a href="/privacy.html">Privacy</a></p>
+  </div>
+  <script type="module" src="/assets/portal.js?v=20260330"></script>
+</body>
+</html>

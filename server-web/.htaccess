@@ -1,0 +1,31 @@
+RewriteEngine On
+
+# Allow direct file access
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Specific route aliases
+RewriteRule ^upload/?$ upload.php [L,QSA]
+RewriteRule ^manage/?$ upload.php [L,QSA]
+RewriteRule ^add-device/?$ upload.php [L,QSA]
+RewriteRule ^activation/?$ activation.php [L,QSA]
+RewriteRule ^admin/?$ admin.php [L,QSA]
+RewriteRule ^admin-login/?$ admin.php [L,QSA]
+RewriteRule ^terms/?$ terms.php [L,QSA]
+RewriteRule ^privacy/?$ privacy.php [L,QSA]
+RewriteRule ^contact-us/?$ contact.php [L,QSA]
+RewriteRule ^contact/?$ contact.php [L,QSA]
+
+# General clean URL rewrite for any .php file
+RewriteCond %{DOCUMENT_ROOT}/$1.php -f
+RewriteRule ^([^/]+)/?$ $1.php [L,QSA]
+
+# Prevent aggressive browser caching of static media and styles
+<IfModule mod_headers.c>
+  <FilesMatch "\.(css|js|png|jpg|jpeg|gif|ico|svg)$">
+    Header set Cache-Control "max-age=0, no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+  </FilesMatch>
+</IfModule>

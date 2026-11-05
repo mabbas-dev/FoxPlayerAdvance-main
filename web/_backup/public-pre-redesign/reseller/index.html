@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reseller — FOX PLAYER</title>
+  <link rel="stylesheet" href="/assets/fox-theme.css" />
+</head>
+<body data-fox-page="reseller">
+  <div class="shell" style="max-width:480px">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <div class="brand-mark">FX</div>
+        <div><div class="brand-title">Reseller portal</div></div>
+      </div>
+      <a class="btn btn-ghost" href="/">Home</a>
+    </header>
+    <div id="login-box" class="card">
+      <form id="login-form">
+        <label for="username">Username</label>
+        <input id="username" required />
+        <label for="password">Password</label>
+        <input id="password" type="password" required />
+        <button class="btn btn-primary" type="submit" style="width:100%">Sign in</button>
+      </form>
+      <p id="login-err" class="alert alert-error hidden"></p>
+    </div>
+    <div id="panel" class="hidden">
+      <div class="card">
+        <p class="lead">Credits: <strong id="balance" style="color:var(--brand)">0</strong></p>
+      </div>
+      <div class="card">
+        <h2>Activate device</h2>
+        <form id="activate-form">
+          <label for="device-id">Device ID</label>
+          <input id="device-id" required placeholder="From FOX PLAYER app" style="text-transform:uppercase" />
+          <label for="plan-code">Plan</label>
+          <select id="plan-code"></select>
+          <button class="btn btn-primary" type="submit" style="width:100%">Activate</button>
+        </form>
+        <p id="act-msg" class="alert hidden" style="margin-bottom:0"></p>
+      </div>
+      <button type="button" id="logout" class="btn btn-ghost">Log out</button>
+    </div>
+  </div>
+  <script type="module" src="/assets/reseller.js?v=20260329"></script>
+</body>
+</html>

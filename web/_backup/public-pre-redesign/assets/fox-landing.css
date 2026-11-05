@@ -1,0 +1,151 @@
+/* FOX PLAYER — Public marketing landing */
+
+.landing {
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse 120% 80% at 50% -30%, rgba(249, 115, 22, 0.18), transparent 55%),
+    radial-gradient(circle at 100% 50%, rgba(249, 115, 22, 0.06), transparent 40%),
+    var(--bg-primary);
+}
+
+.landing-hero {
+  text-align: center;
+  padding: 48px 20px 32px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.landing-hero img.landing-logo {
+  width: min(280px, 72vw);
+  height: auto;
+  margin: 0 auto 28px;
+  display: block;
+  filter: drop-shadow(0 12px 40px rgba(249, 115, 22, 0.25));
+}
+
+.landing-hero h1 {
+  margin: 0 0 12px;
+  font-size: clamp(1.75rem, 4vw, 2.35rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.landing-hero .tagline {
+  margin: 0 auto 28px;
+  max-width: 520px;
+  color: var(--text-muted);
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+.landing-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.landing-cta {
+  margin-bottom: 8px;
+}
+
+.landing-cta-primary {
+  display: inline-block;
+  padding: 14px 28px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-decoration: none;
+  border-radius: var(--radius);
+}
+
+.landing-cta-hint {
+  margin: 14px auto 0;
+  max-width: 420px;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.landing-upload {
+  max-width: 640px;
+  margin: 0 auto 32px;
+  padding: 28px 24px;
+  text-align: center;
+}
+
+.landing-upload-lead {
+  margin: 0 0 20px;
+  color: var(--text-muted);
+  line-height: 1.65;
+  font-size: 0.95rem;
+}
+
+.landing-upload-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.landing-upload-actions .btn {
+  text-decoration: none;
+  padding: 12px 22px;
+  font-weight: 600;
+}
+
+.landing-features {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 20px 56px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.landing-feature {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px;
+  text-align: left;
+}
+
+.landing-feature h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+  color: var(--brand);
+}
+
+.landing-feature p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.landing-steps {
+  max-width: 640px;
+  margin: 0 auto 48px;
+  padding: 0 20px;
+}
+
+.landing-steps ol {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--text-muted);
+  line-height: 1.8;
+}
+
+.landing-steps li strong {
+  color: var(--text);
+}
+
+.landing-footer {
+  text-align: center;
+  padding: 24px 20px 40px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}

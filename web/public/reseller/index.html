@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Reseller portal — FOX PLAYER</title>
+  <link rel="stylesheet" href="/css/portal.css" />
+  <link rel="icon" href="/img/fox-logo-icon.png" type="image/png" />
+</head>
+<body class="reseller-page" data-fox-page="reseller">
+  <header class="portal-header">
+    <div class="portal-header__inner reseller-header-inner">
+      <a class="portal-header__brand" href="/">
+        <img src="/img/fox-logo-icon.png" width="44" height="44" alt="" />
+        <div>
+          <div class="brand-title">FOX PLAYER</div>
+          <div class="brand-sub">Reseller portal</div>
+        </div>
+      </a>
+      <div id="header-user" class="hidden reseller-header-user">
+        <span id="header-name" class="reseller-header-name"></span>
+        <span class="reseller-header-credits"><span id="header-balance">0</span> credits</span>
+      </div>
+      <a class="btn btn-ghost" href="/">Home</a>
+    </div>
+  </header>
+
+  <div class="reseller-shell">
+    <div id="login-box" class="card reseller-login-card">
+      <h2 style="margin-top:0">Partner sign in</h2>
+      <p class="lead">Activate customer devices using your credit wallet.</p>
+      <form id="login-form">
+        <label for="username">Username</label>
+        <input id="username" required autocomplete="username" />
+        <label for="password">Password</label>
+        <input id="password" type="password" required autocomplete="current-password" />
+        <button class="btn btn-primary" type="submit" style="width:100%">Sign in</button>
+      </form>
+      <p id="login-err" class="alert alert-error hidden"></p>
+    </div>
+
+    <div id="panel" class="hidden">
+      <div class="reseller-dash-top">
+        <div class="card reseller-wallet">
+          <div class="reseller-wallet__label">Available credits</div>
+          <div class="reseller-wallet__value" id="balance">0</div>
+          <p class="lead" style="margin:12px 0 0;font-size:0.88rem">Each activation deducts credits based on the plan below.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0">Subscription plans</h2>
+        <p class="lead">Select a plan, then activate a registered device ID.</p>
+        <div id="plan-cards" class="reseller-plan-grid"></div>
+        <input type="hidden" id="plan-code" value="" />
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0">Activate device</h2>
+        <form id="activate-form">
+          <label for="device-id">Device ID</label>
+          <input id="device-id" required placeholder="From FOX PLAYER → Setup" style="text-transform:uppercase" />
+          <p id="selected-plan-hint" class="alert alert-info hidden" style="margin-bottom:14px"></p>
+          <button class="btn btn-primary" type="submit" style="width:100%" id="activate-btn" disabled>Activate device</button>
+        </form>
+        <p id="act-msg" class="alert hidden" style="margin-bottom:0;margin-top:14px"></p>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0">Credit history</h2>
+        <div class="table-wrap">
+          <table class="reseller-ledger-table">
+            <thead><tr><th>Date</th><th>Change</th><th>Details</th></tr></thead>
+            <tbody id="ledger-body"></tbody>
+          </table>
+        </div>
+        <p id="ledger-empty" class="lead hidden" style="margin-bottom:0">No transactions yet.</p>
+      </div>
+
+      <button type="button" id="logout" class="btn btn-ghost" style="margin-top:8px">Sign out</button>
+    </div>
+  </div>
+
+  <script type="module" src="/js/reseller/reseller.js?v=20260407"></script>
+</body>
+</html>
